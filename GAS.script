@@ -33,167 +33,6 @@ function getSpreadsheet() {
 }
 
 // ============================================================
-//  QUESTIONS BY SUB-DEPARTMENT
-//  Supports multiple choice ('mc'), binary ('binary'), and essay ('essay')
-// ============================================================
-var QUESTIONS = {
-  "QC Raw Material": [
-    {
-      id: 1,
-      type: "mc",
-      question: "Metode mana yang paling tepat untuk menguji kadar air pada bahan baku serbuk kering?",
-      options: ["Karl Fischer Titration", "HPLC", "Loss on Drying (LOD)", "Gas Chromatography"],
-      answer: 2
-    },
-    {
-      id: 2,
-      type: "binary",
-      question: "Apakah setiap bahan baku yang masuk wajib melewati uji organoleptik?",
-      options: ["Ya", "Tidak"],
-      answer: 0
-    },
-    {
-      id: 3,
-      type: "essay",
-      question: "Jelaskan langkah-langkah penanganan jika bahan baku yang datang tidak sesuai dengan sertifikat analisis (COA).",
-      keywords: ["karantina", "reject", "lapor", "deviasi"]
-    }
-  ],
-  "QC Packaging": [
-    {
-      id: 1,
-      type: "mc",
-      question: "Pengujian apa yang dilakukan untuk memastikan kebocoran pada kemasan blister?",
-      options: ["Leak Test (Vacuum)", "Tensile Test", "Drop Test", "Tearing Test"],
-      answer: 0
-    },
-    {
-      id: 2,
-      type: "binary",
-      question: "Kemasan primer adalah kemasan yang bersentuhan langsung dengan produk.",
-      options: ["Benar", "Salah"],
-      answer: 0
-    },
-    {
-      id: 3,
-      type: "essay",
-      question: "Bagaimana cara melakukan verifikasi barcode pada kemasan sekunder (box karton)?",
-      keywords: ["scanner", "pembacaan", "kesesuaian", "nomor"]
-    }
-  ],
-  "QC Process Control": [
-    {
-      id: 1,
-      type: "mc",
-      question: "Parameter IPC (In-Process Control) apa yang paling kritis pada proses pencampuran (mixing) serbuk?",
-      options: ["Homogenitas", "Kadar Air", "Viskositas", "Kepadatan"],
-      answer: 0
-    },
-    {
-      id: 2,
-      type: "binary",
-      question: "Apakah operator produksi boleh melanjutkan proses pencetakan tablet sebelum hasil IPC keluar?",
-      options: ["Ya", "Tidak"],
-      answer: 1
-    },
-    {
-      id: 3,
-      type: "essay",
-      question: "Jelaskan tindakan yang harus dilakukan jika berat rata-rata tablet saat IPC melebihi batas toleransi.",
-      keywords: ["stop", "adjust", "karantina", "lapor supervisor"]
-    }
-  ],
-  "QC Finished Goods": [
-    {
-      id: 1,
-      type: "mc",
-      question: "Uji disolusi pada tablet produk jadi bertujuan untuk mengukur apa?",
-      options: ["Kekerasan tablet", "Laju pelepasan zat aktif", "Waktu hancur fisik", "Keseragaman bobot"],
-      answer: 1
-    },
-    {
-      id: 2,
-      type: "binary",
-      question: "Produk jadi yang telah lolos QC dapat langsung dirilis ke pasar tanpa persetujuan Quality Assurance (QA).",
-      options: ["Benar", "Salah"],
-      answer: 1
-    },
-    {
-      id: 3,
-      type: "essay",
-      question: "Sebutkan minimal 3 dokumen yang harus diperiksa sebelum melakukan rilis produk jadi.",
-      keywords: ["batch record", "hasil lab", "reconciliation", "kemasan"]
-    }
-  ],
-  "QC Microbiology": [
-    {
-      id: 1,
-      type: "mc",
-      question: "Metode sterilisasi mana yang paling umum digunakan untuk media pertumbuhan bakteri (agar)?",
-      options: ["Autoklaf 121°C", "Oven Udara Panas", "Filtrasi Membran", "Radiasi Gamma"],
-      answer: 0
-    },
-    {
-      id: 2,
-      type: "binary",
-      question: "Apakah bakteri Gram-Positif akan berwarna merah setelah pengecatan Gram?",
-      options: ["Ya", "Tidak"],
-      answer: 1
-    },
-    {
-      id: 3,
-      type: "essay",
-      question: "Jelaskan langkah cawan kosong (blank plate/control plate) dalam uji mikrobiologi lingkungan udara ruang bersih.",
-      keywords: ["kontaminasi", "media", "inkubasi", "kontrol"]
-    }
-  ],
-  "QC Chemistry Lab": [
-    {
-      id: 1,
-      type: "mc",
-      question: "Untuk analisis kuantitatif kadar zat aktif dengan HPLC, parameter apa yang dibandingkan?",
-      options: ["Retention Time", "Area Peak", "Resolution", "Tailing Factor"],
-      answer: 1
-    },
-    {
-      id: 2,
-      type: "binary",
-      question: "Sebelum digunakan, elektroda pH meter wajib dikalibrasi menggunakan larutan buffer standar.",
-      options: ["Benar", "Salah"],
-      answer: 0
-    },
-    {
-      id: 3,
-      type: "essay",
-      question: "Jelaskan apa yang dimaksud dengan kurva kalibrasi dalam metode spektrofotometri UV-Vis.",
-      keywords: ["absorbansi", "konsentrasi", "regresi", "standar"]
-    }
-  ],
-  "QC Document Control": [
-    {
-      id: 1,
-      type: "mc",
-      question: "Jika terjadi revisi pada suatu SOP, apa yang harus dilakukan terhadap dokumen SOP versi lama?",
-      options: ["Dibuang langsung", "Ditarik dan dimusnahkan/diarsipkan sebagai Obsolete", "Disimpan bersama versi baru", "Dibiarkan saja"],
-      answer: 1
-    },
-    {
-      id: 2,
-      type: "binary",
-      question: "Apakah coretan perbaikan data mentah pada batch record boleh menggunakan tip-ex?",
-      options: ["Ya", "Tidak"],
-      answer: 1
-    },
-    {
-      id: 3,
-      type: "essay",
-      question: "Bagaimana cara melakukan dokumentasi koreksi data yang salah tulis sesuai dengan prinsip ALCOA/Good Documentation Practices (GDP)?",
-      keywords: ["coret sekali", "paraf", "tanggal", "alasan"]
-    }
-  ]
-};
-
-// ============================================================
 //  API ENDPOINTS (GET & POST) FOR VERCEL DEPLOYMENT
 // ============================================================
 function doGet(e) {
@@ -209,6 +48,9 @@ function doGet(e) {
       result = startSession(name, subDept);
     } else if (action === 'getLeaderboard') {
       result = getLeaderboard();
+    } else if (action === 'verifyAdmin') {
+      var password = e.parameter.password;
+      result = verifyAdmin(password);
     } else {
       return HtmlService.createHtmlOutput('<h1>LMS QC API is running</h1><p>Action parameter is required.</p>');
     }
@@ -224,7 +66,18 @@ function doPost(e) {
   var result = {};
   try {
     var postData = JSON.parse(e.postData.contents);
-    result = submitAssessment(postData.name, postData.subDept, postData.answers, postData.timeTaken);
+    var action = postData.action;
+    
+    if (action === 'importQuestions') {
+      result = importQuestions(postData.password, postData.data);
+    } else if (action === 'importParticipants') {
+      result = importParticipants(postData.password, postData.names);
+    } else if (action === 'updateConfig') {
+      result = updateConfig(postData.password, postData.config);
+    } else {
+      // Default: submit assessment
+      result = submitAssessment(postData.name, postData.subDept, postData.answers, postData.timeTaken);
+    }
   } catch(err) {
     result = { success: false, message: err.toString() };
   }
@@ -234,32 +87,58 @@ function doPost(e) {
 }
 
 // ============================================================
-//  INTERNAL BUSINESS LOGIC
+//  INTERNAL BUSINESS & GRADERS LOGIC
 // ============================================================
 
 /**
- * Returns assessment config metadata.
+ * Returns assessment config metadata, including sub-departments dynamically loaded.
  */
 function getConfig() {
   var ss = getSpreadsheet();
   var configSheet = ss.getSheetByName('Config');
-  var isOpen = configSheet.getRange('B1').getValue();
-  var title = configSheet.getRange('B2').getValue() || 'QC Sub-Dept Assessment';
+  
+  var isOpen = false;
+  var title = 'QC Sub-Dept Assessment';
+  var enforceWhitelist = false;
+  
+  if (configSheet) {
+    var data = configSheet.getDataRange().getValues();
+    data.forEach(function(row) {
+      var key = String(row[0]).trim().toLowerCase();
+      if (key === 'assessment open') isOpen = !!row[1];
+      if (key === 'assessment title') title = String(row[1]).trim() || title;
+      if (key === 'enforce whitelist') enforceWhitelist = !!row[1];
+    });
+  }
 
-  var subDepts = Object.keys(QUESTIONS);
+  // Get dynamic sub-departments based on all sheets, excluding system sheets
+  var sheets = ss.getSheets();
+  var subDepts = [];
   var subDeptMeta = {};
-  subDepts.forEach(function (dept) {
-    var qCount = QUESTIONS[dept].length;
-    subDeptMeta[dept] = {
-      totalQuestions: qCount,
-      timeLimit: TIME_LIMIT_SECONDS,
-      maxScore: (qCount * MAX_SCORE_PER_QUESTION) + MAX_SPEED_BONUS
-    };
+  
+  sheets.forEach(function(sheet) {
+    var name = sheet.getName();
+    if (name !== 'Config' && name !== 'Responses' && name !== 'Participants') {
+      subDepts.push(name);
+      
+      var qCount = 0;
+      try {
+        var questionsList = getQuestionsFromSheet(name);
+        qCount = questionsList.length;
+      } catch(e) {}
+      
+      subDeptMeta[name] = {
+        totalQuestions: qCount,
+        timeLimit: TIME_LIMIT_SECONDS,
+        maxScore: (qCount * MAX_SCORE_PER_QUESTION) + MAX_SPEED_BONUS
+      };
+    }
   });
 
   return {
     isOpen: isOpen,
     title: title,
+    enforceWhitelist: enforceWhitelist,
     subDepts: subDepts,
     subDeptMeta: subDeptMeta
   };
@@ -282,23 +161,170 @@ function checkAlreadySubmitted(name) {
 }
 
 /**
+ * Check if a name exists in the whitelist.
+ */
+function isParticipantAllowed(name) {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName('Participants');
+  if (!sheet) return true; // bypass if no whitelist sheet
+  
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return false;
+  
+  var searchName = name.toLowerCase().trim();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]).toLowerCase().trim() === searchName) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Dynamically parse questions from a sheet name.
+ */
+function getQuestionsFromSheet(subDept) {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName(subDept);
+  if (!sheet) {
+    throw new Error('Sheet ' + subDept + ' tidak ditemukan.');
+  }
+  
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return [];
+  
+  var headers = data[0].map(function(h) { return String(h).trim(); });
+  
+  var colIndices = {};
+  headers.forEach(function(h, idx) {
+    colIndices[h] = idx;
+  });
+  
+  var choiceLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+  var questions = [];
+  
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    
+    // Column indices safely
+    var titleIdx = colIndices['Title'] !== undefined ? colIndices['Title'] : 0;
+    var diffIdx = colIndices['Difficulty Level'];
+    var typeIdx = colIndices['Type Questions (Multiple Choice, Essay, Binary)'] !== undefined 
+      ? colIndices['Type Questions (Multiple Choice, Essay, Binary)'] 
+      : colIndices['Type'];
+    var ansIdx = colIndices['Answer'];
+    var kwIdx = colIndices['Keywords'];
+    
+    var title = String(row[titleIdx]).trim();
+    if (!title) continue; // skip blank rows
+    
+    var difficulty = diffIdx !== undefined ? Number(row[diffIdx]) : 1;
+    
+    // Normalisasi Type
+    var rawType = typeIdx !== undefined ? String(row[typeIdx]).toLowerCase().trim() : '';
+    var type = 'mc';
+    if (rawType.indexOf('essay') !== -1) {
+      type = 'essay';
+    } else if (rawType.indexOf('binary') !== -1 || rawType.indexOf('bin') !== -1 || rawType === 'binary') {
+      type = 'binary';
+    } else {
+      type = 'mc';
+    }
+    
+    // Normalisasi Answer
+    var rawAns = ansIdx !== undefined ? String(row[ansIdx]).trim() : '';
+    var answer = 0;
+    
+    if (type === 'binary') {
+      var lowerAns = rawAns.toLowerCase();
+      if (lowerAns === 'ya' || lowerAns === 'benar' || lowerAns === 'a' || lowerAns === '0' || lowerAns === 'true' || lowerAns === 'yes') {
+        answer = 0;
+      } else {
+        answer = 1;
+      }
+    } else if (type === 'mc') {
+      var letterIdx = choiceLetters.indexOf(rawAns.toUpperCase());
+      if (letterIdx !== -1) {
+        answer = letterIdx;
+      } else {
+        var numAns = parseInt(rawAns);
+        answer = isNaN(numAns) ? 0 : numAns;
+      }
+    } else {
+      answer = rawAns; // Essay
+    }
+    
+    // Options
+    var options = [];
+    choiceLetters.forEach(function(letter) {
+      var colIdx = colIndices[letter];
+      if (colIdx !== undefined && row[colIdx] !== undefined) {
+        var optVal = String(row[colIdx]).trim();
+        if (optVal) {
+          options.push(optVal);
+        }
+      }
+    });
+    
+    // Keywords (for essay)
+    var keywords = [];
+    if (kwIdx !== undefined && row[kwIdx]) {
+      keywords = String(row[kwIdx]).split(',').map(function(k) { return k.trim().toLowerCase(); }).filter(Boolean);
+    }
+    
+    questions.push({
+      id: i,
+      type: type,
+      question: title,
+      options: options,
+      answer: answer,
+      difficulty: difficulty,
+      keywords: keywords.length > 0 ? keywords : null
+    });
+  }
+  
+  return questions;
+}
+
+/**
  * Starts assessment session and returns questions without answers.
  */
 function startSession(name, subDept) {
   var ss = getSpreadsheet();
   var configSheet = ss.getSheetByName('Config');
+  var enforceWhitelist = false;
+  var isOpen = false;
+  
+  if (configSheet) {
+    var configData = configSheet.getDataRange().getValues();
+    configData.forEach(function(row) {
+      var key = String(row[0]).trim().toLowerCase();
+      if (key === 'enforce whitelist') enforceWhitelist = !!row[1];
+      if (key === 'assessment open') isOpen = !!row[1];
+    });
+  }
 
-  if (!configSheet.getRange('B1').getValue()) {
+  if (!isOpen) {
     return { success: false, message: 'Assessment is currently closed.' };
+  }
+
+  if (enforceWhitelist && !isParticipantAllowed(name)) {
+    return { success: false, message: 'Nama Anda tidak terdaftar sebagai peserta kuis. Hubungi administrator.' };
   }
 
   if (checkAlreadySubmitted(name)) {
     return { success: false, message: 'Nama ini sudah terdaftar mengirimkan jawaban.' };
   }
 
-  var questionsRaw = QUESTIONS[subDept];
-  if (!questionsRaw) {
-    return { success: false, message: 'Sub-department tidak ditemukan.' };
+  var questionsRaw = [];
+  try {
+    questionsRaw = getQuestionsFromSheet(subDept);
+  } catch(e) {
+    return { success: false, message: 'Gagal memuat soal: ' + e.toString() };
+  }
+  
+  if (questionsRaw.length === 0) {
+    return { success: false, message: 'Belum ada soal untuk sub-department ' + subDept };
   }
 
   // Strip answers
@@ -325,18 +351,35 @@ function startSession(name, subDept) {
 function submitAssessment(name, subDept, answers, timeTaken) {
   var ss = getSpreadsheet();
   var configSheet = ss.getSheetByName('Config');
+  var isOpen = false;
+  var enforceWhitelist = false;
+  
+  if (configSheet) {
+    var configData = configSheet.getDataRange().getValues();
+    configData.forEach(function(row) {
+      var key = String(row[0]).trim().toLowerCase();
+      if (key === 'assessment open') isOpen = !!row[1];
+      if (key === 'enforce whitelist') enforceWhitelist = !!row[1];
+    });
+  }
 
-  if (!configSheet.getRange('B1').getValue()) {
+  if (!isOpen) {
     return { success: false, message: 'Assessment is currently closed.' };
+  }
+
+  if (enforceWhitelist && !isParticipantAllowed(name)) {
+    return { success: false, message: 'Nama Anda tidak terdaftar sebagai peserta kuis.' };
   }
 
   if (checkAlreadySubmitted(name)) {
     return { success: false, message: 'You have already submitted an entry.' };
   }
 
-  var questionsList = QUESTIONS[subDept];
-  if (!questionsList) {
-    return { success: false, message: 'Invalid sub-department.' };
+  var questionsList = [];
+  try {
+    questionsList = getQuestionsFromSheet(subDept);
+  } catch(e) {
+    return { success: false, message: 'Gagal mengambil kunci jawaban: ' + e.toString() };
   }
 
   var correctCount = 0;
@@ -441,8 +484,152 @@ function getLeaderboard() {
 }
 
 // ============================================================
-//  ADMIN CONTROLS
+//  ADMIN CONTROLS & API ENGINE
 // ============================================================
+
+function getAdminPassword() {
+  try {
+    var ss = getSpreadsheet();
+    var configSheet = ss.getSheetByName('Config');
+    var data = configSheet.getDataRange().getValues();
+    for (var i = 0; i < data.length; i++) {
+      if (String(data[i][0]).trim().toLowerCase() === 'admin password') {
+        return String(data[i][1]).trim();
+      }
+    }
+  } catch(e) {}
+  return 'admin123'; // fallback
+}
+
+function verifyAdmin(password) {
+  var actualPassword = getAdminPassword();
+  if (password === actualPassword) {
+    return { success: true };
+  }
+  return { success: false, message: 'Password admin salah.' };
+}
+
+function importQuestions(password, data) {
+  var verification = verifyAdmin(password);
+  if (!verification.success) return verification;
+  
+  var ss = getSpreadsheet();
+  
+  // Format data: [{ subDept: "Question", questions: [...] }, ...]
+  for (var d = 0; d < data.length; d++) {
+    var importData = data[d];
+    var subDept = importData.subDept.trim();
+    var questions = importData.questions;
+    
+    if (!subDept || !questions || questions.length === 0) continue;
+    
+    var sheet = ss.getSheetByName(subDept);
+    if (sheet) {
+      sheet.clearContents();
+    } else {
+      sheet = ss.insertSheet(subDept);
+    }
+    
+    // Headers
+    var headers = ['Title', 'Difficulty Level', 'Type', 'Answer', 'Question Knowledge', 'Keywords', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    sheet.appendRow(headers);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+    
+    // Rows
+    for (var q = 0; q < questions.length; q++) {
+      var item = questions[q];
+      var row = [];
+      
+      row.push(item.question);
+      row.push(item.difficulty || 1);
+      row.push(item.type || 'mc');
+      
+      var rawAns = item.answer;
+      if (item.type === 'mc') {
+        var letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+        if (typeof rawAns === 'number' && rawAns >= 0 && rawAns < letters.length) {
+          rawAns = letters[rawAns];
+        }
+      } else if (item.type === 'binary') {
+        rawAns = rawAns === 0 ? 'A' : 'B'; 
+      }
+      row.push(rawAns);
+      
+      row.push(item.questionKnowledge || '');
+      row.push(item.keywords ? item.keywords.join(', ') : '');
+      
+      var options = item.options || [];
+      for (var optIdx = 0; optIdx < 10; optIdx++) {
+        row.push(options[optIdx] || '');
+      }
+      
+      sheet.appendRow(row);
+    }
+  }
+  
+  return { success: true, message: 'Berhasil mengimpor ' + data.length + ' sub-department soal.' };
+}
+
+function importParticipants(password, names) {
+  var verification = verifyAdmin(password);
+  if (!verification.success) return verification;
+  
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName('Participants');
+  if (!sheet) {
+    sheet = ss.insertSheet('Participants');
+  }
+  
+  sheet.clearContents();
+  sheet.appendRow(['Name', 'Import Date']);
+  sheet.getRange(1, 1, 1, 2).setFontWeight('bold');
+  
+  var dateStr = new Date();
+  for (var i = 0; i < names.length; i++) {
+    var name = String(names[i]).trim();
+    if (name) {
+      sheet.appendRow([name, dateStr]);
+    }
+  }
+  
+  return { success: true, message: 'Berhasil mengimpor ' + names.length + ' nama partisipan.' };
+}
+
+function updateConfig(password, configUpdates) {
+  var verification = verifyAdmin(password);
+  if (!verification.success) return verification;
+  
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName('Config');
+  var data = sheet.getDataRange().getValues();
+  
+  var configMap = {};
+  for (var i = 0; i < data.length; i++) {
+    configMap[String(data[i][0]).trim().toLowerCase()] = i + 1;
+  }
+  
+  if (configUpdates.isOpen !== undefined) {
+    var row = configMap['assessment open'] || 1;
+    sheet.getRange(row, 2).setValue(configUpdates.isOpen);
+  }
+  
+  if (configUpdates.title !== undefined) {
+    var row = configMap['assessment title'] || 2;
+    sheet.getRange(row, 2).setValue(configUpdates.title);
+  }
+  
+  if (configUpdates.adminPassword !== undefined) {
+    var row = configMap['admin password'] || 3;
+    sheet.getRange(row, 2).setValue(configUpdates.adminPassword);
+  }
+  
+  if (configUpdates.enforceWhitelist !== undefined) {
+    var row = configMap['enforce whitelist'] || 4;
+    sheet.getRange(row, 2).setValue(configUpdates.enforceWhitelist);
+  }
+  
+  return { success: true, message: 'Konfigurasi berhasil disimpan.' };
+}
 
 function openAssessment() {
   getSpreadsheet()
@@ -476,9 +663,11 @@ function setupSheets() {
   var configSheet = ss.getSheetByName('Config');
   if (!configSheet) configSheet = ss.insertSheet('Config');
   configSheet.clearContents();
-  configSheet.getRange('A1:B2').setValues([
+  configSheet.getRange('A1:B4').setValues([
     ['Assessment Open', false],
-    ['Assessment Title', 'QC Sub-Dept Assessment']
+    ['Assessment Title', 'QC Sub-Dept Assessment'],
+    ['Admin Password', 'admin123'],
+    ['Enforce Whitelist', false]
   ]);
 
   var resSheet = ss.getSheetByName('Responses');
@@ -490,7 +679,13 @@ function setupSheets() {
   ]);
   resSheet.getRange(1, 1, 1, 11).setFontWeight('bold');
 
-  Logger.log('✅ Sheets setup complete. Now run openAssessment() when ready.');
+  var partSheet = ss.getSheetByName('Participants');
+  if (!partSheet) partSheet = ss.insertSheet('Participants');
+  partSheet.clearContents();
+  partSheet.appendRow(['Name', 'Import Date']);
+  partSheet.getRange(1, 1, 1, 2).setFontWeight('bold');
+
+  Logger.log('✅ Sheets setup complete. Now run openAssessment() ketika siap.');
 }
 
 /**

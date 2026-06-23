@@ -436,3 +436,285 @@ function escHtml(str) {
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
 }
+
+// ---- Admin Panel Logic ----
+var adminPasswordSession = '';
+
+function openAdminModal() {
+    document.getElementById('modal-admin').style.display = 'flex';
+    document.getElementById('admin-login-view').style.display = 'block';
+    document.getElementById('admin-dashboard-view').style.display = 'none';
+    document.getElementById('input-admin-password').value = '';
+    document.getElementById('admin-login-error').style.display = 'none';
+}
+
+function closeAdminModal() {
+    document.getElementById('modal-admin').style.display = 'none';
+}
+
+function loginAdmin() {
+    var password = document.getElementById('input-admin-password').value;
+    var errEl = document.getElementById('admin-login-error');
+    errEl.style.display = 'none';
+    
+    if (!password) { showError(errEl, 'Password cannot be empty.'); return; }
+    
+    // Call GAS verifyAdmin
+    fetch(GAS_URL + '?action=verifyAdmin&password=' + encodeURIComponent(password))
+        .then(function(res) { return res.json(); })
+        .then(function(res) {
+            if (res.success) {
+                adminPasswordSession = password;
+                document.getElementById('admin-login-view').style.display = 'none';
+                document.getElementById('admin-dashboard-view').style.display = 'block';
+                
+                // Load current configs to form
+                document.getElementById('check-assessment-open').checked = !!config.isOpen;
+                document.getElementById('check-enforce-whitelist').checked = !!config.enforceWhitelist;
+                document.getElementById('input-assessment-title').value = config.title || '';
+                document.getElementById('input-new-admin-password').value = '';
+                
+                document.getElementById('questions-upload-status').style.display = 'none';
+                document.getElementById('participants-upload-status').style.display = 'none';
+                document.getElementById('file-questions-excel').value = '';
+                document.getElementById('textarea-participants').value = '';
+            } else {
+                showError(errEl, res.message || 'Incorrect password.');
+            }
+        })
+        .catch(function(e) {
+            showError(errEl, 'Connection error: ' + e.message);
+        });
+}
+
+function saveAdminSettings() {
+    var isOpen = document.getElementById('check-assessment-open').checked;
+    var enforceWhitelist = document.getElementById('check-enforce-whitelist').checked;
+    var title = document.getElementById('input-assessment-title').value.trim();
+    var newPassword = document.getElementById('input-new-admin-password').value.trim();
+    
+    var payload = {
+        action: 'updateConfig',
+        password: adminPasswordSession,
+        config: {
+            isOpen: isOpen,
+            enforceWhitelist: enforceWhitelist,
+            title: title
+        }
+    };
+    
+    if (newPassword) {
+        payload.config.adminPassword = newPassword;
+    }
+    
+    fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(res) {
+        if (res.success) {
+            alert('Settings saved successfully!');
+            if (newPassword) {
+                adminPasswordSession = newPassword;
+            }
+            // Reload page config
+            location.reload();
+        } else {
+            alert('Save failed: ' + res.message);
+        }
+    })
+    .catch(function(e) {
+        alert('Error saving settings: ' + e.message);
+    });
+}
+
+function handleQuestionsUpload() {
+    var fileInput = document.getElementById('file-questions-excel');
+    var statusEl = document.getElementById('questions-upload-status');
+    
+    if (fileInput.files.length === 0) {
+        statusEl.textContent = 'Please select an Excel file first.';
+        statusEl.className = 'error-msg';
+        statusEl.style.display = 'block';
+        return;
+    }
+    
+    statusEl.textContent = 'Reading excel file...';
+    statusEl.className = 'text-muted';
+    statusEl.style.display = 'block';
+    
+    var file = fileInput.files[0];
+    var reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            var data = new Uint8Array(e.target.result);
+            var workbook = XLSX.read(data, { type: 'array' });
+            
+            var payloadData = [];
+            
+            workbook.SheetNames.forEach(function(sheetName) {
+                var worksheet = workbook.Sheets[sheetName];
+                var rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+                
+                if (rawJson.length === 0) return;
+                
+                var questions = [];
+                rawJson.forEach(function(row) {
+                    var questionText = row['Title'] || row['Question'] || '';
+                    if (!questionText) return;
+                    
+                    var diffLevel = row['Difficulty Level'] || row['Difficulty'] || 1;
+                    
+                    var typeVal = String(row['Type Questions (Multiple Choice, Essay, Binary)'] || row['Type'] || '').toLowerCase();
+                    var type = 'mc';
+                    if (typeVal.indexOf('essay') !== -1) {
+                        type = 'essay';
+                    } else if (typeVal.indexOf('binary') !== -1 || typeVal.indexOf('bin') !== -1) {
+                        type = 'binary';
+                    }
+                    
+                    var options = [];
+                    var choiceLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+                    choiceLetters.forEach(function(letter) {
+                        if (row[letter] !== undefined && row[letter] !== null && String(row[letter]).trim() !== '') {
+                            options.push(String(row[letter]).trim());
+                        }
+                    });
+                    
+                    var answerVal = String(row['Answer'] || '').trim();
+                    var answer = 0;
+                    
+                    if (type === 'binary') {
+                        var lowerAns = answerVal.toLowerCase();
+                        if (lowerAns === 'ya' || lowerAns === 'benar' || lowerAns === 'a' || lowerAns === '0' || lowerAns === 'true' || lowerAns === 'yes') {
+                            answer = 0;
+                        } else {
+                            answer = 1;
+                        }
+                    } else if (type === 'mc') {
+                        var letterIdx = choiceLetters.indexOf(answerVal.toUpperCase());
+                        if (letterIdx !== -1) {
+                            answer = letterIdx;
+                        } else {
+                            var numAns = parseInt(answerVal);
+                            answer = isNaN(numAns) ? 0 : numAns;
+                        }
+                    } else {
+                        answer = answerVal;
+                    }
+                    
+                    var keywords = [];
+                    if (row['Keywords']) {
+                        keywords = String(row['Keywords']).split(',').map(function(k) { return k.trim(); }).filter(Boolean);
+                    }
+                    
+                    questions.push({
+                        question: questionText,
+                        difficulty: parseInt(diffLevel) || 1,
+                        type: type,
+                        options: options,
+                        answer: answer,
+                        questionKnowledge: row['Question Knowledge'] || '',
+                        keywords: keywords
+                    });
+                });
+                
+                if (questions.length > 0) {
+                    payloadData.push({
+                        subDept: sheetName,
+                        questions: questions
+                    });
+                }
+            });
+            
+            if (payloadData.length === 0) {
+                statusEl.textContent = 'No questions found in Excel sheets.';
+                statusEl.className = 'error-msg';
+                return;
+            }
+            
+            statusEl.textContent = 'Uploading ' + payloadData.length + ' sub-departments to server...';
+            
+            var payload = {
+                action: 'importQuestions',
+                password: adminPasswordSession,
+                data: payloadData
+            };
+            
+            fetch(GAS_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: JSON.stringify(payload)
+            })
+            .then(function(res) { return res.json(); })
+            .then(function(res) {
+                if (res.success) {
+                    statusEl.textContent = '✅ Questions imported successfully!';
+                    statusEl.style.color = '#3b6d11';
+                    fileInput.value = '';
+                } else {
+                    statusEl.textContent = '❌ Upload failed: ' + res.message;
+                    statusEl.className = 'error-msg';
+                }
+            })
+            .catch(function(e) {
+                statusEl.textContent = '❌ Network error: ' + e.message;
+                statusEl.className = 'error-msg';
+            });
+            
+        } catch(err) {
+            statusEl.textContent = '❌ Failed to parse excel: ' + err.message;
+            statusEl.className = 'error-msg';
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+function handleParticipantsUpload() {
+    var txtArea = document.getElementById('textarea-participants');
+    var statusEl = document.getElementById('participants-upload-status');
+    
+    var rawText = txtArea.value.trim();
+    if (!rawText) {
+        statusEl.textContent = 'Please paste participant names first.';
+        statusEl.className = 'error-msg';
+        statusEl.style.display = 'block';
+        return;
+    }
+    
+    statusEl.textContent = 'Uploading participant whitelist...';
+    statusEl.className = 'text-muted';
+    statusEl.style.display = 'block';
+    
+    var names = rawText.split('\n').map(function(n) { return n.trim(); }).filter(Boolean);
+    
+    var payload = {
+        action: 'importParticipants',
+        password: adminPasswordSession,
+        names: names
+    };
+    
+    fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(res) {
+        if (res.success) {
+            statusEl.textContent = '✅ Successfully imported ' + names.length + ' participants!';
+            statusEl.style.color = '#3b6d11';
+            txtArea.value = '';
+        } else {
+            statusEl.textContent = '❌ Upload failed: ' + res.message;
+            statusEl.className = 'error-msg';
+        }
+    })
+    .catch(function(e) {
+        statusEl.textContent = '❌ Network error: ' + e.message;
+        statusEl.className = 'error-msg';
+    });
+}
+
