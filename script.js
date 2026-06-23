@@ -1,4 +1,4 @@
-var GAS_URL = 'https://script.google.com/macros/s/AKfycbyKawVimbKz1IGIE65mxBaRSnN02XE1g2TbdfH8oY6Dcvpirm9EYCgVjkIl-TV7ONop/exec'; // <-- Deploy URL from Google Apps Script
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbzLpAY6b3TIh5zfrxN1FHV2kacyRRNW-wQGhVDoshXqi6gFgDjOlPWEZxXZB9SccepfiQ/exec'; // <-- Deploy URL from Google Apps Script
 
 var config = null;
 var currentQ = 0;
@@ -32,7 +32,7 @@ function onConfigLoaded(cfg) {
     // Fill sub-department dropdown
     var subdeptSelect = document.getElementById('input-subdept');
     subdeptSelect.innerHTML = '';
-    
+
     if (cfg.subDepts && cfg.subDepts.length > 0) {
         cfg.subDepts.forEach(function (dept) {
             var opt = document.createElement('option');
@@ -40,12 +40,12 @@ function onConfigLoaded(cfg) {
             opt.textContent = dept;
             subdeptSelect.appendChild(opt);
         });
-        
+
         // Listen to change to update chips
         subdeptSelect.onchange = function () {
             updateSubDeptMeta(this.value);
         };
-        
+
         // Initialize with first sub-dept metadata
         updateSubDeptMeta(cfg.subDepts[0]);
     }
@@ -85,7 +85,7 @@ function startAssessment() {
         '<div class="loading"><div class="spin" style="font-size:28px">⟳</div><p style="margin-top:1rem">Memulai sesi penilaian...</p></div>';
 
     var startUrl = GAS_URL + "?action=startSession&name=" + encodeURIComponent(name) + "&subDept=" + encodeURIComponent(subDept);
-    
+
     fetch(startUrl)
         .then(function (res) {
             return res.json();
@@ -98,7 +98,7 @@ function startAssessment() {
             }
             myName = name;
             mySubDept = subDept;
-            
+
             // Set dynamic session config
             config.questions = res.questions;
             config.timeLimit = res.timeLimit;
@@ -179,7 +179,7 @@ function renderQuestion() {
     } else {
         optionsEl.style.display = 'flex';
         essayWrapEl.style.display = 'none';
-        
+
         optionsEl.innerHTML = '';
         q.options.forEach(function (opt, i) {
             var div = document.createElement('div');
@@ -204,7 +204,7 @@ function selectAnswer(i) {
 
 function saveEssayAnswer(val) {
     answers[currentQ] = val;
-    
+
     // Live update progress label and dot
     var n = config.questions.length;
     var unanswered = answers.filter(function (a, i) {
@@ -238,7 +238,7 @@ function confirmSubmit() {
         if (qItem.type === 'essay') return !a.trim();
         return a === -1;
     }).length;
-    
+
     var msg = unanswered > 0
         ? 'Anda memiliki ' + unanswered + ' soal yang belum dijawab. Tetap kirim?'
         : 'Kirim jawaban assessment Anda? Jawaban tidak dapat diubah setelah dikirim.';
@@ -294,15 +294,15 @@ function submitNow() {
         },
         body: JSON.stringify(payload)
     })
-    .then(function (res) {
-        return res.json();
-    })
-    .then(onSubmitResult)
-    .catch(function (e) {
-        alert('Pengiriman gagal: ' + e.message + '\nSilakan coba lagi.');
-        showScreen('screen-quiz');
-        startTimer();
-    });
+        .then(function (res) {
+            return res.json();
+        })
+        .then(onSubmitResult)
+        .catch(function (e) {
+            alert('Pengiriman gagal: ' + e.message + '\nSilakan coba lagi.');
+            showScreen('screen-quiz');
+            startTimer();
+        });
 }
 
 function onSubmitResult(res) {
