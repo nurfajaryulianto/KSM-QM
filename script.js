@@ -453,6 +453,13 @@ function escHtml(str) {
 // ---- Admin Panel Logic ----
 var adminPasswordSession = '';
 
+function showAdminSubView(viewId) {
+    document.getElementById('admin-menu-select').style.display = 'none';
+    document.getElementById('admin-participants-view').style.display = 'none';
+    document.getElementById('admin-assessment-view').style.display = 'none';
+    document.getElementById(viewId).style.display = 'block';
+}
+
 function openAdminModal() {
     document.getElementById('modal-admin').style.display = 'flex';
     document.getElementById('admin-login-view').style.display = 'block';
@@ -480,6 +487,7 @@ function loginAdmin() {
                 adminPasswordSession = password;
                 document.getElementById('admin-login-view').style.display = 'none';
                 document.getElementById('admin-dashboard-view').style.display = 'block';
+                showAdminSubView('admin-menu-select');
                 
                 // Load current configs to form
                 document.getElementById('check-assessment-open').checked = !!config.isOpen;
@@ -506,57 +514,16 @@ function loginAdmin() {
         });
 }
 
-function saveAdminSettings() {
-    var isOpen = document.getElementById('check-assessment-open').checked;
+function saveParticipantSettings() {
     var enforceWhitelist = document.getElementById('check-enforce-whitelist').checked;
-    var title = document.getElementById('input-assessment-title').value.trim();
-    var newPassword = document.getElementById('input-new-admin-password').value.trim();
     
-    var autoOpenTime = document.getElementById('input-auto-open').value;
-    var autoCloseTime = document.getElementById('input-auto-close').value;
-    var timeLimitMinutes = parseInt(document.getElementById('input-time-limit').value) || 10;
-    var scorePerQuestion = parseInt(document.getElementById('input-score-per-q').value) || 10;
-    var maxSpeedBonus = parseInt(document.getElementById('input-speed-bonus').value) || 0;
-
-    if (timeLimitMinutes <= 0) {
-        alert('Time limit must be greater than 0.');
-        return;
-    }
-    if (scorePerQuestion <= 0) {
-        alert('Score per question must be greater than 0.');
-        return;
-    }
-    if (maxSpeedBonus < 0) {
-        alert('Max speed bonus cannot be negative.');
-        return;
-    }
-    if (autoOpenTime && autoCloseTime) {
-        var openD = new Date(autoOpenTime).getTime();
-        var closeD = new Date(autoCloseTime).getTime();
-        if (closeD <= openD) {
-            alert('Auto Close Time must be after Auto Open Time.');
-            return;
-        }
-    }
-
     var payload = {
         action: 'updateConfig',
         password: adminPasswordSession,
         config: {
-            isOpen: isOpen,
-            enforceWhitelist: enforceWhitelist,
-            title: title,
-            autoOpenTime: autoOpenTime,
-            autoCloseTime: autoCloseTime,
-            timeLimitMinutes: timeLimitMinutes,
-            scorePerQuestion: scorePerQuestion,
-            maxSpeedBonus: maxSpeedBonus
+            enforceWhitelist: enforceWhitelist
         }
     };
-    
-    if (newPassword) {
-        payload.config.adminPassword = newPassword;
-    }
     
     fetch(GAS_URL, {
         method: 'POST',
@@ -566,18 +533,115 @@ function saveAdminSettings() {
     .then(function(res) { return res.json(); })
     .then(function(res) {
         if (res.success) {
-            alert('Settings saved successfully!');
-            if (newPassword) {
-                adminPasswordSession = newPassword;
-            }
-            // Reload page config
+            alert('Pengaturan whitelist berhasil disimpan!');
+            // Update local config value so the form updates without full reload if we just switch sub-views, 
+            // but reload is fine too since it refreshes all states. Let's do reload.
             location.reload();
         } else {
-            alert('Save failed: ' + res.message);
+            alert('Gagal menyimpan whitelist: ' + res.message);
+        }
+    })
+    .catch(function(e) {
+        alert('Error: ' + e.message);
+    });
+}
+
+function saveAssessmentSettings() {
+    var isOpen = document.getElementById('check-assessment-open').checked;
+    var title = document.getElementById('input-assessment-title').value.trim();
+    var autoOpenTime = document.getElementById('input-auto-open').value;
+    var autoCloseTime = document.getElementById('input-auto-close').value;
+    var timeLimitMinutes = parseInt(document.getElementById('input-time-limit').value) || 10;
+    var scorePerQuestion = parseInt(document.getElementById('input-score-per-q').value) || 10;
+    var maxSpeedBonus = parseInt(document.getElementById('input-speed-bonus').value) || 0;
+
+    if (timeLimitMinutes <= 0) {
+        alert('Batas waktu pengerjaan kuis harus lebih dari 0 menit.');
+        return;
+    }
+    if (scorePerQuestion <= 0) {
+        alert('Skor per soal harus lebih dari 0.');
+        return;
+    }
+    if (maxSpeedBonus < 0) {
+        alert('Max bonus kecepatan tidak boleh negatif.');
+        return;
+    }
+    if (autoOpenTime && autoCloseTime) {
+        var openD = new Date(autoOpenTime).getTime();
+        var closeD = new Date(autoCloseTime).getTime();
+        if (closeD <= openD) {
+            alert('Jadwal Tutup Otomatis harus setelah Jadwal Buka Otomatis.');
+            return;
+        }
+    }
+
+    var payload = {
+        action: 'updateConfig',
+        password: adminPasswordSession,
+        config: {
+            isOpen: isOpen,
+            title: title,
+            autoOpenTime: autoOpenTime,
+            autoCloseTime: autoCloseTime,
+            timeLimitMinutes: timeLimitMinutes,
+            scorePerQuestion: scorePerQuestion,
+            maxSpeedBonus: maxSpeedBonus
+        }
+    };
+    
+    fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(res) {
+        if (res.success) {
+            alert('Pengaturan assessment berhasil disimpan!');
+            location.reload();
+        } else {
+            alert('Gagal menyimpan assessment: ' + res.message);
         }
     })
     .catch(function(e) {
         alert('Error saving settings: ' + e.message);
+    });
+}
+
+function saveAdminPasswordOnly() {
+    var newPassword = document.getElementById('input-new-admin-password').value.trim();
+    if (!newPassword) {
+        alert('Silakan isi password baru terlebih dahulu.');
+        return;
+    }
+    
+    var payload = {
+        action: 'updateConfig',
+        password: adminPasswordSession,
+        config: {
+            adminPassword: newPassword
+        }
+    };
+    
+    fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+    })
+    .then(function(res) { return res.json(); })
+    .then(function(res) {
+        if (res.success) {
+            alert('Password admin berhasil diubah!');
+            adminPasswordSession = newPassword;
+            document.getElementById('input-new-admin-password').value = '';
+            location.reload();
+        } else {
+            alert('Gagal mengubah password: ' + res.message);
+        }
+    })
+    .catch(function(e) {
+        alert('Error: ' + e.message);
     });
 }
 

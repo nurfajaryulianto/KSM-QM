@@ -207,71 +207,103 @@
                     
                     <!-- Admin Dashboard Screen -->
                     <div id="admin-dashboard-view" style="display:none">
-                        <div class="admin-section">
-                            <h3>Settings</h3>
-                            <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 1rem;">
-                                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer;">
-                                    <input type="checkbox" id="check-assessment-open" /> Assessment Open
-                                </label>
-                                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer;">
-                                    <input type="checkbox" id="check-enforce-whitelist" /> Enforce Whitelist
-                                </label>
+                        
+                        <!-- Main Menu Selection -->
+                        <div id="admin-menu-select">
+                            <h3 style="margin-bottom: 1rem; color: var(--purple-800); font-size: 14px; font-weight: 600;">Pilih Menu Administrasi</h3>
+                            <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 1.5rem;">
+                                <button class="btn btn-primary" onclick="showAdminSubView('admin-participants-view')" style="margin: 0; padding: 14px; font-size: 14px; font-weight: 600; gap: 10px; display: flex; align-items: center; justify-content: center; width: 100%;">
+                                    <span>👥</span> Kelola Partisipan (Whitelist)
+                                </button>
+                                <button class="btn btn-primary" onclick="showAdminSubView('admin-assessment-view')" style="margin: 0; padding: 14px; font-size: 14px; font-weight: 600; gap: 10px; display: flex; align-items: center; justify-content: center; width: 100%;">
+                                    <span>📝</span> Kelola Assessment & Soal
+                                </button>
                             </div>
-                            
-                            <p class="label">Assessment Title</p>
-                            <input type="text" id="input-assessment-title" placeholder="KSM Assessment Title" style="margin-bottom: 1rem;" />
-                            
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem;">
-                                <div>
-                                    <p class="label">Auto Open Time</p>
-                                    <input type="datetime-local" id="input-auto-open" style="width: 100%;" />
-                                </div>
-                                <div>
-                                    <p class="label">Auto Close Time</p>
-                                    <input type="datetime-local" id="input-auto-close" style="width: 100%;" />
-                                </div>
+                            <hr class="divider" style="margin: 1.5rem 0;" />
+                            <div class="admin-section">
+                                <h3>Keamanan</h3>
+                                <p class="label">Ubah Password Admin</p>
+                                <input type="password" id="input-new-admin-password" placeholder="Kosongkan jika tidak ingin mengubah" style="margin-bottom: 1rem;" />
+                                <button class="btn btn-primary btn-full" onclick="saveAdminPasswordOnly()" style="margin-top: 0;">Ubah Password</button>
                             </div>
+                        </div>
 
-                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 1rem;">
-                                <div>
-                                    <p class="label">Time Limit (Min)</p>
-                                    <input type="number" id="input-time-limit" min="1" style="width: 100%;" />
-                                </div>
-                                <div>
-                                    <p class="label">Score / Qs</p>
-                                    <input type="number" id="input-score-per-q" min="1" style="width: 100%;" />
-                                </div>
-                                <div>
-                                    <p class="label">Max Speed Bonus</p>
-                                    <input type="number" id="input-speed-bonus" min="0" style="width: 100%;" />
-                                </div>
+                        <!-- Sub-menu: Manage Participants -->
+                        <div id="admin-participants-view" style="display:none">
+                            <button class="btn" onclick="showAdminSubView('admin-menu-select')" style="margin-bottom: 1.25rem; font-size: 13px; padding: 6px 12px;">&larr; Kembali ke Menu</button>
+                            
+                            <div class="admin-section">
+                                <h3>Kelola Partisipan</h3>
+                                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; margin-bottom: 1rem;">
+                                    <input type="checkbox" id="check-enforce-whitelist" /> Batasi Kuis Hanya untuk Partisipan Terdaftar
+                                </label>
+                                <button class="btn btn-primary btn-full" onclick="saveParticipantSettings()" style="margin-top: 0; margin-bottom: 1rem;">Simpan Pengaturan Whitelist</button>
                             </div>
                             
-                            <p class="label">Change Admin Password</p>
-                            <input type="password" id="input-new-admin-password" placeholder="Leave blank to keep current" style="margin-bottom: 1rem;" />
+                            <hr class="divider" style="margin: 1.25rem 0;" />
                             
-                            <button class="btn btn-primary btn-full" onclick="saveAdminSettings()">Save Settings</button>
+                            <div class="admin-section">
+                                <h3>Import Whitelisted Participants</h3>
+                                <p class="text-muted" style="margin-bottom: 0.5rem;">Paste NIK dan Nama (format: NIK, Nama - satu per baris).</p>
+                                <textarea id="textarea-participants" placeholder="Contoh:&#10;12345, Budi Santoso&#10;12346, Alice Wijaya" class="textarea-input" style="height: 120px; margin-bottom: 1rem;"></textarea>
+                                <button class="btn btn-primary btn-full" id="btn-upload-participants" onclick="handleParticipantsUpload()" style="margin-top: 0;">Import Daftar Partisipan</button>
+                                <p id="participants-upload-status" style="font-size: 13px; margin-top: 0.5rem; display: none;"></p>
+                            </div>
                         </div>
-                        
-                        <hr class="divider" style="margin: 1.5rem 0;" />
-                        
-                        <div class="admin-section">
-                            <h3>Import Questions (from Excel)</h3>
-                            <p class="text-muted" style="margin-bottom: 0.5rem;">Select your questions.xlsx file. Overwrites existing sheets.</p>
-                            <input type="file" id="file-questions-excel" accept=".xlsx, .xls" style="margin-bottom: 1rem; width: 100%;" />
-                            <button class="btn btn-primary btn-full" id="btn-upload-questions" onclick="handleQuestionsUpload()">Upload & Import Questions</button>
-                            <p id="questions-upload-status" style="font-size: 13px; margin-top: 0.5rem; display: none;"></p>
+
+                        <!-- Sub-menu: Manage Assessment -->
+                        <div id="admin-assessment-view" style="display:none">
+                            <button class="btn" onclick="showAdminSubView('admin-menu-select')" style="margin-bottom: 1.25rem; font-size: 13px; padding: 6px 12px;">&larr; Kembali ke Menu</button>
+                            
+                            <div class="admin-section">
+                                <h3>Pengaturan Assessment</h3>
+                                <label style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; margin-bottom: 1rem;">
+                                    <input type="checkbox" id="check-assessment-open" /> Buka Kuis Secara Manual
+                                </label>
+                                
+                                <p class="label">Judul Assessment</p>
+                                <input type="text" id="input-assessment-title" placeholder="KSM Assessment Title" style="margin-bottom: 1rem;" />
+                                
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem;">
+                                    <div>
+                                        <p class="label">Jadwal Buka Otomatis</p>
+                                        <input type="datetime-local" id="input-auto-open" style="width: 100%;" />
+                                    </div>
+                                    <div>
+                                        <p class="label">Jadwal Tutup Otomatis</p>
+                                        <input type="datetime-local" id="input-auto-close" style="width: 100%;" />
+                                    </div>
+                                </div>
+
+                                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 1rem;">
+                                    <div>
+                                        <p class="label">Batas Waktu (Min)</p>
+                                        <input type="number" id="input-time-limit" min="1" style="width: 100%;" />
+                                    </div>
+                                    <div>
+                                        <p class="label">Skor / Soal</p>
+                                        <input type="number" id="input-score-per-q" min="1" style="width: 100%;" />
+                                    </div>
+                                    <div>
+                                        <p class="label">Max Bonus Cepat</p>
+                                        <input type="number" id="input-speed-bonus" min="0" style="width: 100%;" />
+                                    </div>
+                                </div>
+                                
+                                <button class="btn btn-primary btn-full" onclick="saveAssessmentSettings()" style="margin-top: 0;">Simpan Pengaturan Assessment</button>
+                            </div>
+                            
+                            <hr class="divider" style="margin: 1.5rem 0;" />
+                            
+                            <div class="admin-section">
+                                <h3>Upload Berkas Soal (Excel)</h3>
+                                <p class="text-muted" style="margin-bottom: 0.5rem;">Import soal baru dengan mengupload file Excel template `questions.xlsx`.</p>
+                                <input type="file" id="file-questions-excel" accept=".xlsx, .xls" style="margin-bottom: 1rem; width: 100%;" />
+                                <button class="btn btn-primary btn-full" id="btn-upload-questions" onclick="handleQuestionsUpload()" style="margin-top: 0;">Upload & Import Soal</button>
+                                <p id="questions-upload-status" style="font-size: 13px; margin-top: 0.5rem; display: none;"></p>
+                            </div>
                         </div>
-                        
-                        <hr class="divider" style="margin: 1.5rem 0;" />
-                        
-                        <div class="admin-section">
-                            <h3>Import Whitelisted Participants</h3>
-                            <p class="text-muted" style="margin-bottom: 0.5rem;">Paste NIK and Name (format: NIK, Name - one per line).</p>
-                            <textarea id="textarea-participants" placeholder="e.g.&#10;12345, Budi Santoso&#10;12346, Alice Wijaya" class="textarea-input" style="height: 120px; margin-bottom: 1rem;"></textarea>
-                            <button class="btn btn-primary btn-full" id="btn-upload-participants" onclick="handleParticipantsUpload()">Import Participant List</button>
-                            <p id="participants-upload-status" style="font-size: 13px; margin-top: 0.5rem; display: none;"></p>
-                        </div>
+
                     </div>
                 </div>
             </div>
