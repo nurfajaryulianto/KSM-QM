@@ -43,9 +43,10 @@ function doGet(e) {
     if (action === 'getConfig') {
       result = getConfig();
     } else if (action === 'startSession') {
+      var nik = e.parameter.nik;
       var name = e.parameter.name;
       var subDept = e.parameter.subDept;
-      result = startSession(name, subDept);
+      result = startSession(nik, name, subDept);
     } else if (action === 'getLeaderboard') {
       result = getLeaderboard();
     } else if (action === 'verifyAdmin') {
@@ -71,12 +72,12 @@ function doPost(e) {
     if (action === 'importQuestions') {
       result = importQuestions(postData.password, postData.data);
     } else if (action === 'importParticipants') {
-      result = importParticipants(postData.password, postData.names);
+      result = importParticipants(postData.password, postData.participants);
     } else if (action === 'updateConfig') {
       result = updateConfig(postData.password, postData.config);
     } else {
       // Default: submit assessment
-      result = submitAssessment(postData.name, postData.subDept, postData.answers, postData.timeTaken);
+      result = submitAssessment(postData.nik, postData.name, postData.subDept, postData.answers, postData.timeTaken);
     }
   } catch(err) {
     result = { success: false, message: err.toString() };
@@ -145,15 +146,15 @@ function getConfig() {
 }
 
 /**
- * Check if a name has already been submitted.
+ * Check if a NIK has already submitted responses.
  */
-function checkAlreadySubmitted(name) {
+function checkAlreadySubmitted(nik) {
   var ss = getSpreadsheet();
   var sheet = ss.getSheetByName('Responses');
   var data = sheet.getDataRange().getValues();
 
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][1]).toLowerCase().trim() === name.toLowerCase().trim()) {
+    if (String(data[i][1]).toLowerCase().trim() === String(nik).toLowerCase().trim()) {
       return true;
     }
   }
@@ -161,23 +162,41 @@ function checkAlreadySubmitted(name) {
 }
 
 /**
- * Check if a name exists in the whitelist.
+ * Check if a NIK exists in the whitelist.
  */
-function isParticipantAllowed(name) {
+function isParticipantAllowed(nik) {
   var ss = getSpreadsheet();
   var sheet = ss.getSheetByName('Participants');
-  if (!sheet) return true; // bypass if no whitelist sheet
+  if (!sheet) return true; // bypass if whitelist sheet doesn't exist
   
   var data = sheet.getDataRange().getValues();
   if (data.length <= 1) return false;
   
-  var searchName = name.toLowerCase().trim();
+  var searchNik = String(nik).toLowerCase().trim();
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]).toLowerCase().trim() === searchName) {
+    if (String(data[i][0]).toLowerCase().trim() === searchNik) {
       return true;
     }
   }
   return false;
+}
+
+/**
+ * Get registered participant name by NIK.
+ */
+function getParticipantName(nik) {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName('Participants');
+  if (!sheet) return '';
+  
+  var data = sheet.getDataRange().getValues();
+  var searchNik = String(nik).toLowerCase().trim();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]).toLowerCase().trim() === searchNik) {
+      return String(data[i][1]).trim();
+    }
+  }
+  return '';
 }
 
 /**
@@ -289,7 +308,7 @@ function getQuestionsFromSheet(subDept) {
 /**
  * Starts assessment session and returns questions without answers.
  */
-function startSession(name, subDept) {
+function startSession(nik, name, subDept) {
   var ss = getSpreadsheet();
   var configSheet = ss.getSheetByName('Config');
   var enforceWhitelist = false;
@@ -308,12 +327,23 @@ function startSession(name, subDept) {
     return { success: false, message: 'Assessment is currently closed.' };
   }
 
-  if (enforceWhitelist && !isParticipantAllowed(name)) {
-    return { success: false, message: 'Nama Anda tidak terdaftar sebagai peserta kuis. Hubungi administrator.' };
+  if (!nik || !String(nik).trim()) {
+    return { success: false, message: 'NIK wajib diisi.' };
   }
 
-  if (checkAlreadySubmitted(name)) {
-    return { success: false, message: 'Nama ini sudah terdaftar mengirimkan jawaban.' };
+  if (enforceWhitelist) {
+    if (!isParticipantAllowed(nik)) {
+      return { success: false, message: 'NIK Anda tidak terdaftar sebagai peserta kuis. Hubungi administrator.' };
+    }
+    
+    var registeredName = getParticipantName(nik);
+    if (name && registeredName && registeredName.toLowerCase().trim() !== name.toLowerCase().trim()) {
+      return { success: false, message: 'Nama yang dimasukkan tidak sesuai dengan NIK terdaftar. Terdaftar: ' + registeredName };
+    }
+  }
+
+  if (checkAlreadySubmitted(nik)) {
+    return { success: false, message: 'NIK ini sudah terdaftar mengirimkan jawaban.' };
   }
 
   var questionsRaw = [];
@@ -348,7 +378,7 @@ function startSession(name, subDept) {
 /**
  * Score and save a participant's submission.
  */
-function submitAssessment(name, subDept, answers, timeTaken) {
+function submitAssessment(nik, name, subDept, answers, timeTaken) {
   var ss = getSpreadsheet();
   var configSheet = ss.getSheetByName('Config');
   var isOpen = false;
@@ -367,12 +397,16 @@ function submitAssessment(name, subDept, answers, timeTaken) {
     return { success: false, message: 'Assessment is currently closed.' };
   }
 
-  if (enforceWhitelist && !isParticipantAllowed(name)) {
-    return { success: false, message: 'Nama Anda tidak terdaftar sebagai peserta kuis.' };
+  if (!nik || !String(nik).trim()) {
+    return { success: false, message: 'NIK wajib diisi.' };
   }
 
-  if (checkAlreadySubmitted(name)) {
-    return { success: false, message: 'You have already submitted an entry.' };
+  if (enforceWhitelist && !isParticipantAllowed(nik)) {
+    return { success: false, message: 'NIK Anda tidak terdaftar sebagai peserta kuis.' };
+  }
+
+  if (checkAlreadySubmitted(nik)) {
+    return { success: false, message: 'Anda sudah terdaftar mengirimkan jawaban untuk NIK ini.' };
   }
 
   var questionsList = [];
@@ -421,11 +455,19 @@ function submitAssessment(name, subDept, answers, timeTaken) {
   var totalScore = baseScore + speedBonus;
   var accuracy = Math.round((correctCount / questionsList.length) * 100);
 
-  // Persist to sheet
+  // Persist to sheet (adding NIK as column 2)
   var responseSheet = ss.getSheetByName('Responses');
+  
+  var finalName = name.trim();
+  if (enforceWhitelist) {
+    var whitelistedName = getParticipantName(nik);
+    if (whitelistedName) finalName = whitelistedName;
+  }
+
   responseSheet.appendRow([
     new Date(),
-    name.trim(),
+    nik.trim(),
+    finalName,
     subDept,
     correctCount,
     questionsList.length,
@@ -439,7 +481,7 @@ function submitAssessment(name, subDept, answers, timeTaken) {
 
   return {
     success: true,
-    name: name.trim(),
+    name: finalName,
     correctCount: correctCount,
     totalQuestions: questionsList.length,
     accuracy: accuracy,
@@ -463,15 +505,15 @@ function getLeaderboard() {
   var results = [];
   for (var i = 1; i < data.length; i++) {
     results.push({
-      name: data[i][1],
-      subDept: data[i][2],
-      correct: data[i][3],
-      total: data[i][4],
-      accuracy: data[i][5],
-      baseScore: data[i][6],
-      speedBonus: data[i][7],
-      totalScore: data[i][8],
-      timeTaken: data[i][9]
+      name: data[i][2], // Name is now index 2 (column C)
+      subDept: data[i][3], // Sub-Dept is index 3 (column D)
+      correct: data[i][4],
+      total: data[i][5],
+      accuracy: data[i][6],
+      baseScore: data[i][7],
+      speedBonus: data[i][8],
+      totalScore: data[i][9],
+      timeTaken: data[i][10]
     });
   }
 
@@ -515,7 +557,6 @@ function importQuestions(password, data) {
   
   var ss = getSpreadsheet();
   
-  // Format data: [{ subDept: "Question", questions: [...] }, ...]
   for (var d = 0; d < data.length; d++) {
     var importData = data[d];
     var subDept = importData.subDept.trim();
@@ -570,7 +611,7 @@ function importQuestions(password, data) {
   return { success: true, message: 'Berhasil mengimpor ' + data.length + ' sub-department soal.' };
 }
 
-function importParticipants(password, names) {
+function importParticipants(password, participants) {
   var verification = verifyAdmin(password);
   if (!verification.success) return verification;
   
@@ -581,18 +622,22 @@ function importParticipants(password, names) {
   }
   
   sheet.clearContents();
-  sheet.appendRow(['Name', 'Import Date']);
-  sheet.getRange(1, 1, 1, 2).setFontWeight('bold');
+  sheet.appendRow(['NIK', 'Name', 'Import Date']);
+  sheet.getRange(1, 1, 1, 3).setFontWeight('bold');
   
   var dateStr = new Date();
-  for (var i = 0; i < names.length; i++) {
-    var name = String(names[i]).trim();
-    if (name) {
-      sheet.appendRow([name, dateStr]);
+  var count = 0;
+  for (var i = 0; i < participants.length; i++) {
+    var p = participants[i];
+    var nik = String(p.nik).trim();
+    var name = String(p.name).trim();
+    if (nik && name) {
+      sheet.appendRow([nik, name, dateStr]);
+      count++;
     }
   }
   
-  return { success: true, message: 'Berhasil mengimpor ' + names.length + ' nama partisipan.' };
+  return { success: true, message: 'Berhasil mengimpor ' + count + ' nama partisipan.' };
 }
 
 function updateConfig(password, configUpdates) {
@@ -674,16 +719,16 @@ function setupSheets() {
   if (!resSheet) resSheet = ss.insertSheet('Responses');
   resSheet.clearContents();
   resSheet.appendRow([
-    'Timestamp', 'Name', 'Sub-Department', 'Correct', 'Total Questions',
+    'Timestamp', 'NIK', 'Name', 'Sub-Department', 'Correct', 'Total Questions',
     'Accuracy (%)', 'Base Score', 'Speed Bonus', 'Total Score', 'Time Taken (s)', 'Answers Detail'
   ]);
-  resSheet.getRange(1, 1, 1, 11).setFontWeight('bold');
+  resSheet.getRange(1, 1, 1, 12).setFontWeight('bold');
 
   var partSheet = ss.getSheetByName('Participants');
   if (!partSheet) partSheet = ss.insertSheet('Participants');
   partSheet.clearContents();
-  partSheet.appendRow(['Name', 'Import Date']);
-  partSheet.getRange(1, 1, 1, 2).setFontWeight('bold');
+  partSheet.appendRow(['NIK', 'Name', 'Import Date']);
+  partSheet.getRange(1, 1, 1, 3).setFontWeight('bold');
 
   Logger.log('✅ Sheets setup complete. Now run openAssessment() ketika siap.');
 }

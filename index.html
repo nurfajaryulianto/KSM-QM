@@ -29,6 +29,9 @@
             </div>
             <div class="card">
                 <div id="form-open">
+                    <p class="label">NIK / Employee ID</p>
+                    <input type="text" id="input-nik" placeholder="e.g. 12345" maxlength="20" style="margin-bottom: 1rem;" />
+
                     <p class="label">Your full name</p>
                     <input type="text" id="input-name" placeholder="e.g. Budi Santoso" maxlength="60" />
                     
@@ -237,8 +240,8 @@
                         
                         <div class="admin-section">
                             <h3>Import Whitelisted Participants</h3>
-                            <p class="text-muted" style="margin-bottom: 0.5rem;">Paste participant names (one name per line).</p>
-                            <textarea id="textarea-participants" placeholder="e.g.&#10;Budi Santoso&#10;Alice Wijaya" class="textarea-input" style="height: 120px; margin-bottom: 1rem;"></textarea>
+                            <p class="text-muted" style="margin-bottom: 0.5rem;">Paste NIK and Name (format: NIK, Name - one per line).</p>
+                            <textarea id="textarea-participants" placeholder="e.g.&#10;12345, Budi Santoso&#10;12346, Alice Wijaya" class="textarea-input" style="height: 120px; margin-bottom: 1rem;"></textarea>
                             <button class="btn btn-primary btn-full" id="btn-upload-participants" onclick="handleParticipantsUpload()">Import Participant List</button>
                             <p id="participants-upload-status" style="font-size: 13px; margin-top: 0.5rem; display: none;"></p>
                         </div>

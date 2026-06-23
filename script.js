@@ -6,6 +6,7 @@ var answers = [];
 var timerInterval = null;
 var secondsLeft = 0;
 var startTime = null;
+var myNik = '';
 var myName = '';
 var mySubDept = '';
 var myResult = null;
@@ -71,11 +72,13 @@ function updateSubDeptMeta(dept) {
 }
 
 function startAssessment() {
+    var nik = document.getElementById('input-nik').value.trim();
     var name = document.getElementById('input-name').value.trim();
     var subDept = document.getElementById('input-subdept').value;
     var errEl = document.getElementById('reg-error');
     errEl.style.display = 'none';
 
+    if (!nik) { showError(errEl, 'Please enter your NIK / Employee ID.'); return; }
     if (!name) { showError(errEl, 'Please enter your name.'); return; }
     if (name.length < 2) { showError(errEl, 'Name is too short.'); return; }
     if (!subDept) { showError(errEl, 'Please select a sub-department.'); return; }
@@ -84,7 +87,7 @@ function startAssessment() {
     document.getElementById('screen-loading').innerHTML =
         '<div class="loading"><div class="spin" style="font-size:28px">⟳</div><p style="margin-top:1rem">Memulai sesi penilaian...</p></div>';
 
-    var startUrl = GAS_URL + "?action=startSession&name=" + encodeURIComponent(name) + "&subDept=" + encodeURIComponent(subDept);
+    var startUrl = GAS_URL + "?action=startSession&nik=" + encodeURIComponent(nik) + "&name=" + encodeURIComponent(name) + "&subDept=" + encodeURIComponent(subDept);
 
     fetch(startUrl)
         .then(function (res) {
@@ -96,6 +99,7 @@ function startAssessment() {
                 showError(errEl, res.message);
                 return;
             }
+            myNik = nik;
             myName = name;
             mySubDept = subDept;
 
@@ -281,6 +285,7 @@ function submitNow() {
         '<div class="loading"><div class="spin" style="font-size:28px">⟳</div><p style="margin-top:1rem">Mengirimkan jawaban Anda...</p></div>';
 
     var payload = {
+        nik: myNik,
         name: myName,
         subDept: mySubDept,
         answers: answers,
@@ -678,7 +683,7 @@ function handleParticipantsUpload() {
     
     var rawText = txtArea.value.trim();
     if (!rawText) {
-        statusEl.textContent = 'Please paste participant names first.';
+        statusEl.textContent = 'Please paste participant data first.';
         statusEl.className = 'error-msg';
         statusEl.style.display = 'block';
         return;
@@ -688,12 +693,41 @@ function handleParticipantsUpload() {
     statusEl.className = 'text-muted';
     statusEl.style.display = 'block';
     
-    var names = rawText.split('\n').map(function(n) { return n.trim(); }).filter(Boolean);
+    var lines = rawText.split('\n');
+    var participants = [];
+    
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
+        
+        var parts = [];
+        if (line.indexOf(',') !== -1) {
+            parts = line.split(',');
+        } else {
+            parts = line.split('\t');
+        }
+        
+        if (parts.length >= 2) {
+            var nik = parts[0].trim();
+            var name = parts.slice(1).join(',').trim();
+            if (nik && name) {
+                participants.push({ nik: nik, name: name });
+            }
+        }
+    }
+    
+    if (participants.length === 0) {
+        statusEl.textContent = '❌ Invalid format. Please use: NIK, Name (e.g. 12345, John Doe)';
+        statusEl.className = 'error-msg';
+        return;
+    }
+    
+    statusEl.textContent = 'Uploading ' + participants.length + ' participants...';
     
     var payload = {
         action: 'importParticipants',
         password: adminPasswordSession,
-        names: names
+        participants: participants
     };
     
     fetch(GAS_URL, {
@@ -704,7 +738,7 @@ function handleParticipantsUpload() {
     .then(function(res) { return res.json(); })
     .then(function(res) {
         if (res.success) {
-            statusEl.textContent = '✅ Successfully imported ' + names.length + ' participants!';
+            statusEl.textContent = '✅ Successfully imported ' + participants.length + ' participants!';
             statusEl.style.color = '#3b6d11';
             txtArea.value = '';
         } else {
