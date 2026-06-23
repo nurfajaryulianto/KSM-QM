@@ -53,8 +53,8 @@
 
                     <div class="card" style="background:#f5f4f0; border:none; padding:14px 16px;">
                         <p style="font-size:13px; font-weight:500; margin-bottom:6px;">How scoring works</p>
-                        <p class="text-muted">&#10003; Each correct answer = 10 points</p>
-                        <p class="text-muted">&#9889; Speed bonus: up to 20 pts for finishing faster</p>
+                        <p class="text-muted" id="scoring-rule-correct">&#10003; Each correct answer = 10 points</p>
+                        <p class="text-muted" id="scoring-rule-bonus">&#9889; Speed bonus: up to 20 pts for finishing faster</p>
                         <p class="text-muted">&#8226; Tiebreaker: faster time wins</p>
                     </div>
 
@@ -68,6 +68,7 @@
                         <h2>Assessment Closed</h2>
                         <p>This assessment is not currently accepting submissions.<br>Check back later or contact your
                             administrator.</p>
+                        <div id="closed-auto-info" style="display:none; margin-top: 1.25rem; padding: 12px 14px; background: var(--amber-50); border: 0.5px solid var(--amber-100); border-radius: var(--radius-sm); color: var(--amber-800); font-size: 13px; font-weight: 500; line-height: 1.4;"></div>
                     </div>
                     <button class="btn btn-full section-gap"
                         onclick="loadLeaderboard(); showScreen('screen-leaderboard')">
@@ -219,6 +220,32 @@
                             
                             <p class="label">Assessment Title</p>
                             <input type="text" id="input-assessment-title" placeholder="KSM Assessment Title" style="margin-bottom: 1rem;" />
+                            
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem;">
+                                <div>
+                                    <p class="label">Auto Open Time</p>
+                                    <input type="datetime-local" id="input-auto-open" style="width: 100%;" />
+                                </div>
+                                <div>
+                                    <p class="label">Auto Close Time</p>
+                                    <input type="datetime-local" id="input-auto-close" style="width: 100%;" />
+                                </div>
+                            </div>
+
+                            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 1rem;">
+                                <div>
+                                    <p class="label">Time Limit (Min)</p>
+                                    <input type="number" id="input-time-limit" min="1" style="width: 100%;" />
+                                </div>
+                                <div>
+                                    <p class="label">Score / Qs</p>
+                                    <input type="number" id="input-score-per-q" min="1" style="width: 100%;" />
+                                </div>
+                                <div>
+                                    <p class="label">Max Speed Bonus</p>
+                                    <input type="number" id="input-speed-bonus" min="0" style="width: 100%;" />
+                                </div>
+                            </div>
                             
                             <p class="label">Change Admin Password</p>
                             <input type="password" id="input-new-admin-password" placeholder="Leave blank to keep current" style="margin-bottom: 1rem;" />

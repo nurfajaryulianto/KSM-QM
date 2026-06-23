@@ -51,6 +51,12 @@ function onConfigLoaded(cfg) {
         updateSubDeptMeta(cfg.subDepts[0]);
     }
 
+    // Dynamic scoring descriptions
+    var scorePerQ = cfg.scorePerQuestion || 10;
+    var speedBonusVal = cfg.maxSpeedBonus !== undefined ? cfg.maxSpeedBonus : 20;
+    document.getElementById('scoring-rule-correct').innerHTML = '&#10003; Each correct answer = ' + scorePerQ + ' points';
+    document.getElementById('scoring-rule-bonus').innerHTML = '&#9889; Speed bonus: up to ' + speedBonusVal + ' pts for finishing faster';
+
     if (cfg.isOpen) {
         document.getElementById('form-open').style.display = 'block';
         document.getElementById('form-closed').style.display = 'none';
@@ -58,6 +64,8 @@ function onConfigLoaded(cfg) {
         document.getElementById('form-open').style.display = 'none';
         document.getElementById('form-closed').style.display = 'block';
     }
+    
+    setupClosedScreen(cfg);
     showScreen('screen-register');
 }
 
@@ -479,6 +487,12 @@ function loginAdmin() {
                 document.getElementById('input-assessment-title').value = config.title || '';
                 document.getElementById('input-new-admin-password').value = '';
                 
+                document.getElementById('input-auto-open').value = formatDateTimeLocal(config.autoOpenTime);
+                document.getElementById('input-auto-close').value = formatDateTimeLocal(config.autoCloseTime);
+                document.getElementById('input-time-limit').value = config.timeLimitMinutes || 10;
+                document.getElementById('input-score-per-q').value = config.scorePerQuestion || 10;
+                document.getElementById('input-speed-bonus').value = config.maxSpeedBonus || 20;
+                
                 document.getElementById('questions-upload-status').style.display = 'none';
                 document.getElementById('participants-upload-status').style.display = 'none';
                 document.getElementById('file-questions-excel').value = '';
@@ -498,13 +512,45 @@ function saveAdminSettings() {
     var title = document.getElementById('input-assessment-title').value.trim();
     var newPassword = document.getElementById('input-new-admin-password').value.trim();
     
+    var autoOpenTime = document.getElementById('input-auto-open').value;
+    var autoCloseTime = document.getElementById('input-auto-close').value;
+    var timeLimitMinutes = parseInt(document.getElementById('input-time-limit').value) || 10;
+    var scorePerQuestion = parseInt(document.getElementById('input-score-per-q').value) || 10;
+    var maxSpeedBonus = parseInt(document.getElementById('input-speed-bonus').value) || 0;
+
+    if (timeLimitMinutes <= 0) {
+        alert('Time limit must be greater than 0.');
+        return;
+    }
+    if (scorePerQuestion <= 0) {
+        alert('Score per question must be greater than 0.');
+        return;
+    }
+    if (maxSpeedBonus < 0) {
+        alert('Max speed bonus cannot be negative.');
+        return;
+    }
+    if (autoOpenTime && autoCloseTime) {
+        var openD = new Date(autoOpenTime).getTime();
+        var closeD = new Date(autoCloseTime).getTime();
+        if (closeD <= openD) {
+            alert('Auto Close Time must be after Auto Open Time.');
+            return;
+        }
+    }
+
     var payload = {
         action: 'updateConfig',
         password: adminPasswordSession,
         config: {
             isOpen: isOpen,
             enforceWhitelist: enforceWhitelist,
-            title: title
+            title: title,
+            autoOpenTime: autoOpenTime,
+            autoCloseTime: autoCloseTime,
+            timeLimitMinutes: timeLimitMinutes,
+            scorePerQuestion: scorePerQuestion,
+            maxSpeedBonus: maxSpeedBonus
         }
     };
     
@@ -750,5 +796,117 @@ function handleParticipantsUpload() {
         statusEl.textContent = '❌ Network error: ' + e.message;
         statusEl.className = 'error-msg';
     });
+}
+
+// ---- Auto Scheduling & Formatting helpers ----
+var closedCountdownInterval = null;
+
+function setupClosedScreen(cfg) {
+    var infoEl = document.getElementById('closed-auto-info');
+    if (closedCountdownInterval) {
+        clearInterval(closedCountdownInterval);
+        closedCountdownInterval = null;
+    }
+    
+    if (cfg.isOpen) {
+        infoEl.style.display = 'none';
+        return;
+    }
+    
+    if (cfg.autoOpenTime) {
+        var openTime = new Date(cfg.autoOpenTime).getTime();
+        var closeTime = cfg.autoCloseTime ? new Date(cfg.autoCloseTime).getTime() : null;
+        var now = Date.now();
+        
+        if (!isNaN(openTime) && openTime > now) {
+            infoEl.style.display = 'block';
+            
+            function updateCountdown() {
+                var current = Date.now();
+                var diff = openTime - current;
+                if (diff <= 0) {
+                    clearInterval(closedCountdownInterval);
+                    infoEl.innerHTML = "🕒 Assessment is opening... Please refresh the page.";
+                    setTimeout(function() {
+                        location.reload();
+                    }, 2000);
+                    return;
+                }
+                
+                var secs = Math.floor(diff / 1000);
+                var days = Math.floor(secs / (24 * 3600));
+                secs %= (24 * 3600);
+                var hours = Math.floor(secs / 3600);
+                secs %= 3600;
+                var mins = Math.floor(secs / 60);
+                secs %= 60;
+                
+                var timeStr = "";
+                if (days > 0) timeStr += days + "d ";
+                if (hours > 0 || days > 0) timeStr += hours + "h ";
+                timeStr += mins + "m " + secs + "s";
+                
+                infoEl.innerHTML = '🕒 Opens in: <strong>' + timeStr + '</strong><br><span style="font-size: 11px; opacity: 0.85;">Scheduled: ' + formatDateTimeString(cfg.autoOpenTime) + '</span>';
+            }
+            
+            updateCountdown();
+            closedCountdownInterval = setInterval(updateCountdown, 1000);
+        } else if (!isNaN(openTime) && closeTime && !isNaN(closeTime) && now > closeTime) {
+            infoEl.style.display = 'block';
+            infoEl.innerHTML = '🔒 Assessment ended on: <strong>' + formatDateTimeString(cfg.autoCloseTime) + '</strong>';
+            infoEl.style.background = 'var(--red-50)';
+            infoEl.style.borderColor = 'var(--red-200)';
+            infoEl.style.color = 'var(--red-600)';
+        } else if (!isNaN(openTime)) {
+            infoEl.style.display = 'block';
+            infoEl.innerHTML = '⚠️ Assessment is temporarily closed by Administrator.';
+            infoEl.style.background = 'var(--amber-50)';
+            infoEl.style.borderColor = 'var(--amber-100)';
+            infoEl.style.color = 'var(--amber-800)';
+        } else {
+            infoEl.style.display = 'none';
+        }
+    } else {
+        infoEl.style.display = 'none';
+    }
+}
+
+function formatDateTimeString(str) {
+    if (!str) return '';
+    try {
+        var d = new Date(str);
+        if (isNaN(d.getTime())) return str;
+        var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        var day = d.getDate();
+        var month = months[d.getMonth()];
+        var year = d.getFullYear();
+        var hour = d.getHours();
+        var min = d.getMinutes();
+        if (hour < 10) hour = '0' + hour;
+        if (min < 10) min = '0' + min;
+        return day + ' ' + month + ' ' + year + ', ' + hour + ':' + min;
+    } catch(e) {
+        return str;
+    }
+}
+
+function formatDateTimeLocal(str) {
+    if (!str) return '';
+    try {
+        var d = new Date(str);
+        if (isNaN(d.getTime())) return '';
+        var year = d.getFullYear();
+        var month = d.getMonth() + 1;
+        var day = d.getDate();
+        var hour = d.getHours();
+        var min = d.getMinutes();
+        if (month < 10) month = '0' + month;
+        if (day < 10) day = '0' + day;
+        if (hour < 10) hour = '0' + hour;
+        if (min < 10) min = '0' + min;
+        return year + '-' + month + '-' + day + 'T' + hour + ':' + min;
+    } catch(e) {
+        return '';
+    }
 }
 
