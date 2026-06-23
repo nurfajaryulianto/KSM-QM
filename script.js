@@ -1,0 +1,438 @@
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbyKawVimbKz1IGIE65mxBaRSnN02XE1g2TbdfH8oY6Dcvpirm9EYCgVjkIl-TV7ONop/exec'; // <-- Deploy URL from Google Apps Script
+
+var config = null;
+var currentQ = 0;
+var answers = [];
+var timerInterval = null;
+var secondsLeft = 0;
+var startTime = null;
+var myName = '';
+var mySubDept = '';
+var myResult = null;
+var allLbData = [];
+var LETTERS = ['A', 'B', 'C', 'D', 'E'];
+
+// ---- Boot ----
+window.onload = function () {
+    fetch(GAS_URL + "?action=getConfig")
+        .then(function (res) {
+            return res.json();
+        })
+        .then(onConfigLoaded)
+        .catch(function (e) {
+            document.getElementById('screen-loading').innerHTML =
+                '<div class="loading" style="color:#a32d2d">Failed to load: ' + e.message + '<br><br><button class="btn" onclick="location.reload()">Retry</button></div>';
+        });
+};
+
+function onConfigLoaded(cfg) {
+    config = cfg;
+    document.getElementById('reg-title').textContent = cfg.title;
+
+    // Fill sub-department dropdown
+    var subdeptSelect = document.getElementById('input-subdept');
+    subdeptSelect.innerHTML = '';
+    
+    if (cfg.subDepts && cfg.subDepts.length > 0) {
+        cfg.subDepts.forEach(function (dept) {
+            var opt = document.createElement('option');
+            opt.value = dept;
+            opt.textContent = dept;
+            subdeptSelect.appendChild(opt);
+        });
+        
+        // Listen to change to update chips
+        subdeptSelect.onchange = function () {
+            updateSubDeptMeta(this.value);
+        };
+        
+        // Initialize with first sub-dept metadata
+        updateSubDeptMeta(cfg.subDepts[0]);
+    }
+
+    if (cfg.isOpen) {
+        document.getElementById('form-open').style.display = 'block';
+        document.getElementById('form-closed').style.display = 'none';
+    } else {
+        document.getElementById('form-open').style.display = 'none';
+        document.getElementById('form-closed').style.display = 'block';
+    }
+    showScreen('screen-register');
+}
+
+function updateSubDeptMeta(dept) {
+    if (!config || !config.subDeptMeta || !config.subDeptMeta[dept]) return;
+    var meta = config.subDeptMeta[dept];
+    document.getElementById('reg-meta').textContent =
+        meta.totalQuestions + ' questions · ' + formatTime(meta.timeLimit) + ' · Max ' + meta.maxScore + ' pts';
+    document.getElementById('reg-q-count').textContent = meta.totalQuestions;
+    document.getElementById('reg-time').textContent = formatTime(meta.timeLimit);
+    document.getElementById('reg-max-score').textContent = meta.maxScore + ' pts';
+}
+
+function startAssessment() {
+    var name = document.getElementById('input-name').value.trim();
+    var subDept = document.getElementById('input-subdept').value;
+    var errEl = document.getElementById('reg-error');
+    errEl.style.display = 'none';
+
+    if (!name) { showError(errEl, 'Please enter your name.'); return; }
+    if (name.length < 2) { showError(errEl, 'Name is too short.'); return; }
+    if (!subDept) { showError(errEl, 'Please select a sub-department.'); return; }
+
+    showScreen('screen-loading');
+    document.getElementById('screen-loading').innerHTML =
+        '<div class="loading"><div class="spin" style="font-size:28px">⟳</div><p style="margin-top:1rem">Memulai sesi penilaian...</p></div>';
+
+    var startUrl = GAS_URL + "?action=startSession&name=" + encodeURIComponent(name) + "&subDept=" + encodeURIComponent(subDept);
+    
+    fetch(startUrl)
+        .then(function (res) {
+            return res.json();
+        })
+        .then(function (res) {
+            if (!res.success) {
+                showScreen('screen-register');
+                showError(errEl, res.message);
+                return;
+            }
+            myName = name;
+            mySubDept = subDept;
+            
+            // Set dynamic session config
+            config.questions = res.questions;
+            config.timeLimit = res.timeLimit;
+            config.totalQuestions = res.totalQuestions;
+            config.maxScore = res.maxScore;
+
+            initQuiz();
+            showScreen('screen-quiz');
+        })
+        .catch(function (e) {
+            showScreen('screen-register');
+            showError(errEl, "Gagal terhubung ke server: " + e.message);
+        });
+}
+
+// ---- Quiz init ----
+function initQuiz() {
+    currentQ = 0;
+    // Essay questions get empty string, others get -1
+    answers = config.questions.map(function (q) {
+        return q.type === 'essay' ? '' : -1;
+    });
+    secondsLeft = config.timeLimit;
+    startTime = Date.now();
+    buildDots();
+    renderQuestion();
+    startTimer();
+}
+
+// Build dots
+function buildDots() {
+    var el = document.getElementById('q-dots');
+    el.innerHTML = '';
+    config.questions.forEach(function (_, i) {
+        var d = document.createElement('div');
+        d.className = 'q-dot';
+        d.id = 'dot-' + i;
+        el.appendChild(d);
+    });
+}
+
+function renderQuestion() {
+    var q = config.questions[currentQ];
+    var n = config.questions.length;
+
+    document.getElementById('q-number').textContent = 'QUESTION ' + (currentQ + 1);
+    document.getElementById('q-label-top').textContent = 'Question ' + (currentQ + 1) + ' of ' + n;
+    document.getElementById('q-text').textContent = q.question;
+
+    // Update dots status
+    config.questions.forEach(function (qItem, i) {
+        var d = document.getElementById('dot-' + i);
+        var isCurrent = (i === currentQ);
+        var isAnswered = false;
+        if (qItem.type === 'essay') {
+            isAnswered = !!(answers[i] && answers[i].trim());
+        } else {
+            isAnswered = (answers[i] !== -1);
+        }
+        d.className = 'q-dot' + (isCurrent ? ' current' : '') + (isAnswered ? ' answered' : '');
+    });
+
+    var unanswered = answers.filter(function (a, i) {
+        var qItem = config.questions[i];
+        if (qItem.type === 'essay') return !a.trim();
+        return a === -1;
+    }).length;
+    document.getElementById('progress-lbl').textContent = (n - unanswered) + ' / ' + n + ' answered';
+
+    var optionsEl = document.getElementById('q-options');
+    var essayWrapEl = document.getElementById('q-essay-wrap');
+    var essayInput = document.getElementById('input-essay');
+
+    if (q.type === 'essay') {
+        optionsEl.style.display = 'none';
+        essayWrapEl.style.display = 'block';
+        essayInput.value = answers[currentQ] || '';
+    } else {
+        optionsEl.style.display = 'flex';
+        essayWrapEl.style.display = 'none';
+        
+        optionsEl.innerHTML = '';
+        q.options.forEach(function (opt, i) {
+            var div = document.createElement('div');
+            div.className = 'option' + (answers[currentQ] === i ? ' selected' : '');
+            div.innerHTML =
+                '<div class="option-letter">' + LETTERS[i] + '</div>' +
+                '<span>' + opt + '</span>';
+            div.onclick = function () { selectAnswer(i); };
+            optionsEl.appendChild(div);
+        });
+    }
+
+    // Nav buttons
+    document.getElementById('btn-prev').style.visibility = currentQ === 0 ? 'hidden' : 'visible';
+    document.getElementById('btn-next').textContent = currentQ === n - 1 ? 'Finish ✓' : 'Next →';
+}
+
+function selectAnswer(i) {
+    answers[currentQ] = i;
+    renderQuestion();
+}
+
+function saveEssayAnswer(val) {
+    answers[currentQ] = val;
+    
+    // Live update progress label and dot
+    var n = config.questions.length;
+    var unanswered = answers.filter(function (a, i) {
+        var qItem = config.questions[i];
+        if (qItem.type === 'essay') return !a.trim();
+        return a === -1;
+    }).length;
+    document.getElementById('progress-lbl').textContent = (n - unanswered) + ' / ' + n + ' answered';
+
+    var dot = document.getElementById('dot-' + currentQ);
+    var isAnswered = !!val.trim();
+    dot.className = 'q-dot current' + (isAnswered ? ' answered' : '');
+}
+
+function prevQuestion() {
+    if (currentQ > 0) { currentQ--; renderQuestion(); }
+}
+
+function nextOrSubmit() {
+    if (currentQ < config.questions.length - 1) {
+        currentQ++;
+        renderQuestion();
+    } else {
+        confirmSubmit();
+    }
+}
+
+function confirmSubmit() {
+    var unanswered = answers.filter(function (a, i) {
+        var qItem = config.questions[i];
+        if (qItem.type === 'essay') return !a.trim();
+        return a === -1;
+    }).length;
+    
+    var msg = unanswered > 0
+        ? 'Anda memiliki ' + unanswered + ' soal yang belum dijawab. Tetap kirim?'
+        : 'Kirim jawaban assessment Anda? Jawaban tidak dapat diubah setelah dikirim.';
+    if (!confirm(msg)) return;
+    submitNow();
+}
+
+// ---- Timer ----
+function startTimer() {
+    updateTimerDisplay();
+    timerInterval = setInterval(function () {
+        secondsLeft--;
+        updateTimerDisplay();
+        if (secondsLeft <= 0) {
+            clearInterval(timerInterval);
+            alert('Waktu pengerjaan habis! Jawaban Anda akan otomatis dikirim sekarang.');
+            submitNow();
+        }
+    }, 1000);
+}
+
+function updateTimerDisplay() {
+    var pct = (secondsLeft / config.timeLimit) * 100;
+    var bar = document.getElementById('timer-bar');
+    bar.style.width = pct + '%';
+    bar.className = 'bar' + (pct < 15 ? ' danger' : pct < 30 ? ' warn' : '');
+
+    var el = document.getElementById('timer-display');
+    el.textContent = formatTime(secondsLeft);
+    el.style.color = secondsLeft < 60 ? '#a32d2d' : secondsLeft < 120 ? '#854f0b' : '#2c2c2a';
+}
+
+// ---- Submit ----
+function submitNow() {
+    clearInterval(timerInterval);
+    var timeTaken = Math.floor((Date.now() - startTime) / 1000);
+
+    showScreen('screen-loading');
+    document.getElementById('screen-loading').innerHTML =
+        '<div class="loading"><div class="spin" style="font-size:28px">⟳</div><p style="margin-top:1rem">Mengirimkan jawaban Anda...</p></div>';
+
+    var payload = {
+        name: myName,
+        subDept: mySubDept,
+        answers: answers,
+        timeTaken: timeTaken
+    };
+
+    fetch(GAS_URL, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'text/plain' // Using text/plain to avoid preflight CORS request complexity
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(function (res) {
+        return res.json();
+    })
+    .then(onSubmitResult)
+    .catch(function (e) {
+        alert('Pengiriman gagal: ' + e.message + '\nSilakan coba lagi.');
+        showScreen('screen-quiz');
+        startTimer();
+    });
+}
+
+function onSubmitResult(res) {
+    if (!res.success) {
+        alert(res.message);
+        showScreen('screen-register');
+        return;
+    }
+    myResult = res;
+    renderResult(res);
+    showScreen('screen-result');
+}
+
+function renderResult(res) {
+    document.getElementById('result-name-hero').textContent = 'Kerja Bagus, ' + res.name + '!';
+    document.getElementById('res-total-score').textContent = res.totalScore;
+    document.getElementById('res-correct').textContent = res.correctCount + '/' + res.totalQuestions;
+    document.getElementById('res-accuracy').textContent = res.accuracy + '%';
+    document.getElementById('res-base').textContent = res.baseScore;
+    document.getElementById('res-time').textContent = formatTime(res.timeTaken);
+
+    // Speed bonus
+    if (res.speedBonus > 0) {
+        document.getElementById('res-bonus').style.display = 'flex';
+        document.getElementById('res-bonus-val').textContent = res.speedBonus;
+        document.getElementById('res-time-val').textContent = formatTime(res.timeTaken);
+    }
+
+    // Badge
+    var badge = document.getElementById('res-badge');
+    var pct = res.accuracy;
+    if (pct === 100) { badge.textContent = '🏅 Nilai Sempurna!'; badge.className = 'result-badge badge-gold'; }
+    else if (pct >= 80) { badge.textContent = '★ Sangat Baik!'; badge.className = 'result-badge badge-gold'; }
+    else if (pct >= 60) { badge.textContent = '✓ Lulus / Cukup'; badge.className = 'result-badge badge-pass'; }
+    else { badge.textContent = '△ Perlu Belajar Lagi'; badge.className = 'result-badge badge-fail'; }
+}
+
+// ---- Leaderboard ----
+function loadLeaderboard() {
+    document.getElementById('lb-content').innerHTML =
+        '<div class="loading"><span class="spin">⟳</span></div>';
+
+    fetch(GAS_URL + "?action=getLeaderboard")
+        .then(function (res) {
+            return res.json();
+        })
+        .then(renderLeaderboard)
+        .catch(function (e) {
+            document.getElementById('lb-content').innerHTML =
+                '<p class="error-msg">Failed to load: ' + e.message + '</p>';
+        });
+}
+
+function renderLeaderboard(data) {
+    allLbData = data;
+    document.getElementById('lb-subtitle').textContent =
+        data.length + ' participant' + (data.length !== 1 ? 's' : '') + ' so far';
+    renderTable(data, 'all');
+}
+
+function filterLeaderboard(mode, btn) {
+    document.querySelectorAll('.tab').forEach(function (t) { t.className = 'tab'; });
+    btn.className = 'tab active';
+
+    var data = allLbData;
+    if (mode === 'top10') data = allLbData.slice(0, 10);
+    if (mode === 'me') data = allLbData.filter(function (r) {
+        return r.name.toLowerCase() === myName.toLowerCase();
+    });
+
+    renderTable(data, mode);
+}
+
+function renderTable(data, mode) {
+    if (!data || data.length === 0) {
+        var msg = mode === 'me'
+            ? 'Hasil tidak ditemukan untuk nama Anda. Selesaikan assessment terlebih dahulu.'
+            : 'Belum ada pengiriman. Jadilah yang pertama!';
+        document.getElementById('lb-content').innerHTML =
+            '<div class="empty-state">' + msg + '</div>';
+        return;
+    }
+
+    var html = '<table class="lb-table"><thead><tr>' +
+        '<th>Rank</th><th>Name</th><th>Sub-Dept</th><th>Score</th><th>Accuracy</th><th>Time</th>' +
+        '</tr></thead><tbody>';
+
+    data.forEach(function (row, i) {
+        var rank = allLbData.indexOf(row) + 1;
+        if (rank === 0) rank = i + 1;
+
+        var isMe = myName && row.name.toLowerCase() === myName.toLowerCase();
+        var rowClass = isMe ? 'me' : (rank === 1 ? 'top-1' : rank === 2 ? 'top-2' : rank === 3 ? 'top-3' : '');
+
+        var badgeClass = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : 'rank-n';
+
+        html += '<tr class="' + rowClass + '">' +
+            '<td><span class="rank-badge ' + badgeClass + '">' + rank + '</span></td>' +
+            '<td>' + escHtml(row.name) + (isMe ? ' <span style="font-size:11px;color:var(--purple-600)">(you)</span>' : '') + '</td>' +
+            '<td>' + escHtml(row.subDept || '-') + '</td>' +
+            '<td class="score-col">' + row.totalScore + '</td>' +
+            '<td><span class="acc-pill">' + row.accuracy + '%</span></td>' +
+            '<td class="time-col">' + formatTime(row.timeTaken) + '</td>' +
+            '</tr>';
+    });
+
+    html += '</tbody></table>';
+    document.getElementById('lb-content').innerHTML = html;
+}
+
+// ---- Helpers ----
+function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(function (s) { s.classList.remove('active'); });
+    document.getElementById(id).classList.add('active');
+}
+
+function formatTime(s) {
+    var m = Math.floor(s / 60);
+    var sec = s % 60;
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+}
+
+function showError(el, msg) {
+    el.textContent = msg;
+    el.style.display = 'block';
+}
+
+function escHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}

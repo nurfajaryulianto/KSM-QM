@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LMS Assessment</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="wrap">
+
+        <!-- ========== LOADING ========== -->
+        <div id="screen-loading" class="screen active">
+            <div class="loading">
+                <div class="spin" style="font-size:28px">⟳</div>
+                <p style="margin-top:1rem">Loading assessment...</p>
+            </div>
+        </div>
+
+        <!-- ========== REGISTER ========== -->
+        <div id="screen-register" class="screen">
+            <div class="hero">
+                <h1 id="reg-title">Assessment</h1>
+                <p id="reg-meta">Loading details...</p>
+            </div>
+            <div class="card">
+                <div id="form-open">
+                    <p class="label">Your full name</p>
+                    <input type="text" id="input-name" placeholder="e.g. Budi Santoso" maxlength="60" />
+                    
+                    <p class="label section-gap">Sub-Department</p>
+                    <select id="input-subdept" class="select-input">
+                        <option value="">Loading sub-departments...</option>
+                    </select>
+
+                    <p id="reg-error" class="error-msg" style="display:none"></p>
+
+                    <div class="chips section-gap" id="reg-chips">
+                        <div class="chip"><span class="chip-val" id="reg-q-count">-</span><span
+                                class="chip-lbl">Questions</span></div>
+                        <div class="chip"><span class="chip-val" id="reg-time">-</span><span class="chip-lbl">Time
+                                limit</span></div>
+                        <div class="chip"><span class="chip-val" id="reg-max-score">-</span><span class="chip-lbl">Max
+                                score</span></div>
+                    </div>
+
+                    <div class="card" style="background:#f5f4f0; border:none; padding:14px 16px;">
+                        <p style="font-size:13px; font-weight:500; margin-bottom:6px;">How scoring works</p>
+                        <p class="text-muted">&#10003; Each correct answer = 10 points</p>
+                        <p class="text-muted">&#9889; Speed bonus: up to 20 pts for finishing faster</p>
+                        <p class="text-muted">&#8226; Tiebreaker: faster time wins</p>
+                    </div>
+
+                    <button class="btn btn-primary btn-full" onclick="startAssessment()">Start Assessment
+                        &rarr;</button>
+                </div>
+
+                <div id="form-closed" style="display:none">
+                    <div class="closed-box">
+                        <div class="closed-icon">&#128274;</div>
+                        <h2>Assessment Closed</h2>
+                        <p>This assessment is not currently accepting submissions.<br>Check back later or contact your
+                            administrator.</p>
+                    </div>
+                    <button class="btn btn-full section-gap"
+                        onclick="loadLeaderboard(); showScreen('screen-leaderboard')">
+                        View Leaderboard
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========== QUIZ ========== -->
+        <div id="screen-quiz" class="screen">
+            <div class="card" style="margin-bottom:1rem">
+                <div class="timer-row">
+                    <span id="q-label-top" class="text-muted">Question 1 of 10</span>
+                    <span id="timer-display">10:00</span>
+                </div>
+                <div id="timer-bar-wrap">
+                    <div id="timer-bar"></div>
+                </div>
+
+                <div class="progress-row">
+                    <div class="q-dots" id="q-dots"></div>
+                    <span class="progress-lbl" id="progress-lbl">0 / 10 answered</span>
+                </div>
+
+                <div id="q-number" class="q-number">QUESTION 1</div>
+                <div id="q-text" class="q-text"></div>
+                <div id="q-options" class="options"></div>
+                <div id="q-essay-wrap" style="display:none">
+                    <textarea id="input-essay" placeholder="Ketik jawaban essay Anda di sini..." class="textarea-input" oninput="saveEssayAnswer(this.value)"></textarea>
+                </div>
+
+                <div class="nav-row">
+                    <button class="btn" id="btn-prev" onclick="prevQuestion()">&#8592; Previous</button>
+                    <button class="btn btn-primary" id="btn-next" onclick="nextOrSubmit()">Next &rarr;</button>
+                </div>
+            </div>
+
+            <button class="btn btn-danger btn-full" onclick="confirmSubmit()">
+                Submit Assessment
+            </button>
+        </div>
+
+        <!-- ========== RESULT ========== -->
+        <div id="screen-result" class="screen">
+            <div class="hero" style="margin-bottom:1rem;">
+                <h1>Assessment Complete</h1>
+                <p id="result-name-hero"></p>
+            </div>
+
+            <div class="card">
+                <div class="result-score">
+                    <div class="score-circle">
+                        <span class="score-big" id="res-total-score">0</span>
+                        <span class="score-sub">total score</span>
+                    </div>
+                    <div id="res-badge" class="result-badge">-</div>
+                    <div id="res-bonus" class="bonus-note" style="display:none">
+                        &#9889; Speed bonus: +<span id="res-bonus-val">0</span> pts for finishing in <span
+                            id="res-time-val"></span>
+                    </div>
+                </div>
+
+                <div class="chips">
+                    <div class="chip">
+                        <span class="chip-val" id="res-correct">0</span>
+                        <span class="chip-lbl">Correct</span>
+                    </div>
+                    <div class="chip">
+                        <span class="chip-val" id="res-accuracy">0%</span>
+                        <span class="chip-lbl">Accuracy</span>
+                    </div>
+                    <div class="chip">
+                        <span class="chip-val" id="res-base">0</span>
+                        <span class="chip-lbl">Base score</span>
+                    </div>
+                    <div class="chip">
+                        <span class="chip-val" id="res-time">-</span>
+                        <span class="chip-lbl">Time taken</span>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary btn-full" onclick="loadLeaderboard(); showScreen('screen-leaderboard')">
+                    View Leaderboard &rarr;
+                </button>
+            </div>
+        </div>
+
+        <!-- ========== LEADERBOARD ========== -->
+        <div id="screen-leaderboard" class="screen">
+            <div class="card">
+                <div class="lb-header">
+                    <div>
+                        <div class="lb-title">Leaderboard</div>
+                        <div id="lb-subtitle" class="lb-subtitle">Top participants</div>
+                    </div>
+                    <button class="btn" onclick="loadLeaderboard()">&#8635; Refresh</button>
+                </div>
+
+                <div class="tabs">
+                    <button class="tab active" onclick="filterLeaderboard('all', this)">All</button>
+                    <button class="tab" onclick="filterLeaderboard('top10', this)">Top 10</button>
+                    <button class="tab" onclick="filterLeaderboard('me', this)">My Result</button>
+                </div>
+
+                <div id="lb-content">
+                    <div class="loading"><span class="spin">⟳</span></div>
+                </div>
+
+                <div style="margin-top:1.5rem; display:flex; gap:8px; flex-wrap:wrap">
+                    <button class="btn" onclick="showScreen('screen-register')">&#8592; Back</button>
+                    <button class="btn" onclick="loadLeaderboard()">&#8635; Refresh leaderboard</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>

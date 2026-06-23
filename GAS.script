@@ -1,0 +1,505 @@
+// ============================================================
+//  LMS ASSESSMENT — Google Apps Script Backend (API Mode for Vercel)
+//  Author: Fajar | Setup: Run setupSheets() once first
+// ============================================================
+
+var SPREADSHEET_ID = 'https://docs.google.com/spreadsheets/d/1M68f4e-lxFmPyj0nPCgFv4qPFe8qvOcMAjy_O_yVLtc/edit?gid=0#gid=0'; // <-- Replace this with Spreadsheet ID or full URL
+var TIME_LIMIT_SECONDS = 600; // 10 minutes per session
+var MAX_SCORE_PER_QUESTION = 10;
+var MAX_SPEED_BONUS = 20; // Bonus points for finishing fast
+
+/**
+ * Helper to open the spreadsheet safely, supporting both direct ID, full URL,
+ * and container-bound spreadsheet access.
+ */
+function getSpreadsheet() {
+  try {
+    var activeSS = SpreadsheetApp.getActiveSpreadsheet();
+    if (activeSS) {
+      return activeSS;
+    }
+  } catch (e) {
+    // Standalone
+  }
+
+  var id = SPREADSHEET_ID.trim();
+  if (id.indexOf('http') === 0) {
+    var matches = id.match(/\/d\/([a-zA-Z0-9-_]+)/);
+    if (matches && matches[1]) {
+      id = matches[1];
+    }
+  }
+  return SpreadsheetApp.openById(id);
+}
+
+// ============================================================
+//  QUESTIONS BY SUB-DEPARTMENT
+//  Supports multiple choice ('mc'), binary ('binary'), and essay ('essay')
+// ============================================================
+var QUESTIONS = {
+  "QC Raw Material": [
+    {
+      id: 1,
+      type: "mc",
+      question: "Metode mana yang paling tepat untuk menguji kadar air pada bahan baku serbuk kering?",
+      options: ["Karl Fischer Titration", "HPLC", "Loss on Drying (LOD)", "Gas Chromatography"],
+      answer: 2
+    },
+    {
+      id: 2,
+      type: "binary",
+      question: "Apakah setiap bahan baku yang masuk wajib melewati uji organoleptik?",
+      options: ["Ya", "Tidak"],
+      answer: 0
+    },
+    {
+      id: 3,
+      type: "essay",
+      question: "Jelaskan langkah-langkah penanganan jika bahan baku yang datang tidak sesuai dengan sertifikat analisis (COA).",
+      keywords: ["karantina", "reject", "lapor", "deviasi"]
+    }
+  ],
+  "QC Packaging": [
+    {
+      id: 1,
+      type: "mc",
+      question: "Pengujian apa yang dilakukan untuk memastikan kebocoran pada kemasan blister?",
+      options: ["Leak Test (Vacuum)", "Tensile Test", "Drop Test", "Tearing Test"],
+      answer: 0
+    },
+    {
+      id: 2,
+      type: "binary",
+      question: "Kemasan primer adalah kemasan yang bersentuhan langsung dengan produk.",
+      options: ["Benar", "Salah"],
+      answer: 0
+    },
+    {
+      id: 3,
+      type: "essay",
+      question: "Bagaimana cara melakukan verifikasi barcode pada kemasan sekunder (box karton)?",
+      keywords: ["scanner", "pembacaan", "kesesuaian", "nomor"]
+    }
+  ],
+  "QC Process Control": [
+    {
+      id: 1,
+      type: "mc",
+      question: "Parameter IPC (In-Process Control) apa yang paling kritis pada proses pencampuran (mixing) serbuk?",
+      options: ["Homogenitas", "Kadar Air", "Viskositas", "Kepadatan"],
+      answer: 0
+    },
+    {
+      id: 2,
+      type: "binary",
+      question: "Apakah operator produksi boleh melanjutkan proses pencetakan tablet sebelum hasil IPC keluar?",
+      options: ["Ya", "Tidak"],
+      answer: 1
+    },
+    {
+      id: 3,
+      type: "essay",
+      question: "Jelaskan tindakan yang harus dilakukan jika berat rata-rata tablet saat IPC melebihi batas toleransi.",
+      keywords: ["stop", "adjust", "karantina", "lapor supervisor"]
+    }
+  ],
+  "QC Finished Goods": [
+    {
+      id: 1,
+      type: "mc",
+      question: "Uji disolusi pada tablet produk jadi bertujuan untuk mengukur apa?",
+      options: ["Kekerasan tablet", "Laju pelepasan zat aktif", "Waktu hancur fisik", "Keseragaman bobot"],
+      answer: 1
+    },
+    {
+      id: 2,
+      type: "binary",
+      question: "Produk jadi yang telah lolos QC dapat langsung dirilis ke pasar tanpa persetujuan Quality Assurance (QA).",
+      options: ["Benar", "Salah"],
+      answer: 1
+    },
+    {
+      id: 3,
+      type: "essay",
+      question: "Sebutkan minimal 3 dokumen yang harus diperiksa sebelum melakukan rilis produk jadi.",
+      keywords: ["batch record", "hasil lab", "reconciliation", "kemasan"]
+    }
+  ],
+  "QC Microbiology": [
+    {
+      id: 1,
+      type: "mc",
+      question: "Metode sterilisasi mana yang paling umum digunakan untuk media pertumbuhan bakteri (agar)?",
+      options: ["Autoklaf 121°C", "Oven Udara Panas", "Filtrasi Membran", "Radiasi Gamma"],
+      answer: 0
+    },
+    {
+      id: 2,
+      type: "binary",
+      question: "Apakah bakteri Gram-Positif akan berwarna merah setelah pengecatan Gram?",
+      options: ["Ya", "Tidak"],
+      answer: 1
+    },
+    {
+      id: 3,
+      type: "essay",
+      question: "Jelaskan langkah cawan kosong (blank plate/control plate) dalam uji mikrobiologi lingkungan udara ruang bersih.",
+      keywords: ["kontaminasi", "media", "inkubasi", "kontrol"]
+    }
+  ],
+  "QC Chemistry Lab": [
+    {
+      id: 1,
+      type: "mc",
+      question: "Untuk analisis kuantitatif kadar zat aktif dengan HPLC, parameter apa yang dibandingkan?",
+      options: ["Retention Time", "Area Peak", "Resolution", "Tailing Factor"],
+      answer: 1
+    },
+    {
+      id: 2,
+      type: "binary",
+      question: "Sebelum digunakan, elektroda pH meter wajib dikalibrasi menggunakan larutan buffer standar.",
+      options: ["Benar", "Salah"],
+      answer: 0
+    },
+    {
+      id: 3,
+      type: "essay",
+      question: "Jelaskan apa yang dimaksud dengan kurva kalibrasi dalam metode spektrofotometri UV-Vis.",
+      keywords: ["absorbansi", "konsentrasi", "regresi", "standar"]
+    }
+  ],
+  "QC Document Control": [
+    {
+      id: 1,
+      type: "mc",
+      question: "Jika terjadi revisi pada suatu SOP, apa yang harus dilakukan terhadap dokumen SOP versi lama?",
+      options: ["Dibuang langsung", "Ditarik dan dimusnahkan/diarsipkan sebagai Obsolete", "Disimpan bersama versi baru", "Dibiarkan saja"],
+      answer: 1
+    },
+    {
+      id: 2,
+      type: "binary",
+      question: "Apakah coretan perbaikan data mentah pada batch record boleh menggunakan tip-ex?",
+      options: ["Ya", "Tidak"],
+      answer: 1
+    },
+    {
+      id: 3,
+      type: "essay",
+      question: "Bagaimana cara melakukan dokumentasi koreksi data yang salah tulis sesuai dengan prinsip ALCOA/Good Documentation Practices (GDP)?",
+      keywords: ["coret sekali", "paraf", "tanggal", "alasan"]
+    }
+  ]
+};
+
+// ============================================================
+//  API ENDPOINTS (GET & POST) FOR VERCEL DEPLOYMENT
+// ============================================================
+function doGet(e) {
+  var action = e.parameter.action;
+  var result = {};
+  
+  try {
+    if (action === 'getConfig') {
+      result = getConfig();
+    } else if (action === 'startSession') {
+      var name = e.parameter.name;
+      var subDept = e.parameter.subDept;
+      result = startSession(name, subDept);
+    } else if (action === 'getLeaderboard') {
+      result = getLeaderboard();
+    } else {
+      return HtmlService.createHtmlOutput('<h1>LMS QC API is running</h1><p>Action parameter is required.</p>');
+    }
+  } catch(err) {
+    result = { success: false, message: err.toString() };
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  var result = {};
+  try {
+    var postData = JSON.parse(e.postData.contents);
+    result = submitAssessment(postData.name, postData.subDept, postData.answers, postData.timeTaken);
+  } catch(err) {
+    result = { success: false, message: err.toString() };
+  }
+  
+  return ContentService.createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ============================================================
+//  INTERNAL BUSINESS LOGIC
+// ============================================================
+
+/**
+ * Returns assessment config metadata.
+ */
+function getConfig() {
+  var ss = getSpreadsheet();
+  var configSheet = ss.getSheetByName('Config');
+  var isOpen = configSheet.getRange('B1').getValue();
+  var title = configSheet.getRange('B2').getValue() || 'QC Sub-Dept Assessment';
+
+  var subDepts = Object.keys(QUESTIONS);
+  var subDeptMeta = {};
+  subDepts.forEach(function (dept) {
+    var qCount = QUESTIONS[dept].length;
+    subDeptMeta[dept] = {
+      totalQuestions: qCount,
+      timeLimit: TIME_LIMIT_SECONDS,
+      maxScore: (qCount * MAX_SCORE_PER_QUESTION) + MAX_SPEED_BONUS
+    };
+  });
+
+  return {
+    isOpen: isOpen,
+    title: title,
+    subDepts: subDepts,
+    subDeptMeta: subDeptMeta
+  };
+}
+
+/**
+ * Check if a name has already been submitted.
+ */
+function checkAlreadySubmitted(name) {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName('Responses');
+  var data = sheet.getDataRange().getValues();
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][1]).toLowerCase().trim() === name.toLowerCase().trim()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Starts assessment session and returns questions without answers.
+ */
+function startSession(name, subDept) {
+  var ss = getSpreadsheet();
+  var configSheet = ss.getSheetByName('Config');
+
+  if (!configSheet.getRange('B1').getValue()) {
+    return { success: false, message: 'Assessment is currently closed.' };
+  }
+
+  if (checkAlreadySubmitted(name)) {
+    return { success: false, message: 'Nama ini sudah terdaftar mengirimkan jawaban.' };
+  }
+
+  var questionsRaw = QUESTIONS[subDept];
+  if (!questionsRaw) {
+    return { success: false, message: 'Sub-department tidak ditemukan.' };
+  }
+
+  // Strip answers
+  var questionsClient = questionsRaw.map(function (q) {
+    var item = { id: q.id, type: q.type, question: q.question };
+    if (q.type === 'mc' || q.type === 'binary') {
+      item.options = q.options;
+    }
+    return item;
+  });
+
+  return {
+    success: true,
+    timeLimit: TIME_LIMIT_SECONDS,
+    totalQuestions: questionsClient.length,
+    maxScore: (questionsClient.length * MAX_SCORE_PER_QUESTION) + MAX_SPEED_BONUS,
+    questions: questionsClient
+  };
+}
+
+/**
+ * Score and save a participant's submission.
+ */
+function submitAssessment(name, subDept, answers, timeTaken) {
+  var ss = getSpreadsheet();
+  var configSheet = ss.getSheetByName('Config');
+
+  if (!configSheet.getRange('B1').getValue()) {
+    return { success: false, message: 'Assessment is currently closed.' };
+  }
+
+  if (checkAlreadySubmitted(name)) {
+    return { success: false, message: 'You have already submitted an entry.' };
+  }
+
+  var questionsList = QUESTIONS[subDept];
+  if (!questionsList) {
+    return { success: false, message: 'Invalid sub-department.' };
+  }
+
+  var correctCount = 0;
+  var baseScore = 0;
+
+  questionsList.forEach(function (q, i) {
+    if (q.type === 'essay') {
+      var ansText = String(answers[i] || '').toLowerCase().trim();
+      var matchCount = 0;
+      if (q.keywords) {
+        q.keywords.forEach(function (kw) {
+          if (ansText.indexOf(kw.toLowerCase()) !== -1) {
+            matchCount++;
+          }
+        });
+        if (matchCount >= 2) {
+          baseScore += MAX_SCORE_PER_QUESTION;
+          correctCount++;
+        } else if (matchCount === 1) {
+          baseScore += (MAX_SCORE_PER_QUESTION / 2);
+          correctCount += 0.5;
+        }
+      } else {
+        if (ansText.length > 10) {
+          baseScore += MAX_SCORE_PER_QUESTION;
+          correctCount++;
+        }
+      }
+    } else {
+      if (Number(answers[i]) === q.answer) {
+        baseScore += MAX_SCORE_PER_QUESTION;
+        correctCount++;
+      }
+    }
+  });
+
+  var timeRemaining = Math.max(0, TIME_LIMIT_SECONDS - timeTaken);
+  var speedBonus = Math.floor((timeRemaining / TIME_LIMIT_SECONDS) * MAX_SPEED_BONUS);
+  var totalScore = baseScore + speedBonus;
+  var accuracy = Math.round((correctCount / questionsList.length) * 100);
+
+  // Persist to sheet
+  var responseSheet = ss.getSheetByName('Responses');
+  responseSheet.appendRow([
+    new Date(),
+    name.trim(),
+    subDept,
+    correctCount,
+    questionsList.length,
+    accuracy,
+    baseScore,
+    speedBonus,
+    totalScore,
+    timeTaken,
+    JSON.stringify(answers)
+  ]);
+
+  return {
+    success: true,
+    name: name.trim(),
+    correctCount: correctCount,
+    totalQuestions: questionsList.length,
+    accuracy: accuracy,
+    baseScore: baseScore,
+    speedBonus: speedBonus,
+    totalScore: totalScore,
+    timeTaken: timeTaken
+  };
+}
+
+/**
+ * Returns top 20 participants.
+ */
+function getLeaderboard() {
+  var ss = getSpreadsheet();
+  var sheet = ss.getSheetByName('Responses');
+  var data = sheet.getDataRange().getValues();
+
+  if (data.length <= 1) return [];
+
+  var results = [];
+  for (var i = 1; i < data.length; i++) {
+    results.push({
+      name: data[i][1],
+      subDept: data[i][2],
+      correct: data[i][3],
+      total: data[i][4],
+      accuracy: data[i][5],
+      baseScore: data[i][6],
+      speedBonus: data[i][7],
+      totalScore: data[i][8],
+      timeTaken: data[i][9]
+    });
+  }
+
+  results.sort(function (a, b) {
+    if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+    return a.timeTaken - b.timeTaken;
+  });
+
+  return results.slice(0, 20);
+}
+
+// ============================================================
+//  ADMIN CONTROLS
+// ============================================================
+
+function openAssessment() {
+  getSpreadsheet()
+    .getSheetByName('Config')
+    .getRange('B1')
+    .setValue(true);
+  Logger.log('✅ Assessment OPENED');
+}
+
+function closeAssessment() {
+  getSpreadsheet()
+    .getSheetByName('Config')
+    .getRange('B1')
+    .setValue(false);
+  Logger.log('🔒 Assessment CLOSED');
+}
+
+function setAssessmentTitle(title) {
+  getSpreadsheet()
+    .getSheetByName('Config')
+    .getRange('B2')
+    .setValue(title);
+}
+
+/**
+ * Run this ONCE to initialize the spreadsheet structure.
+ */
+function setupSheets() {
+  var ss = getSpreadsheet();
+
+  var configSheet = ss.getSheetByName('Config');
+  if (!configSheet) configSheet = ss.insertSheet('Config');
+  configSheet.clearContents();
+  configSheet.getRange('A1:B2').setValues([
+    ['Assessment Open', false],
+    ['Assessment Title', 'QC Sub-Dept Assessment']
+  ]);
+
+  var resSheet = ss.getSheetByName('Responses');
+  if (!resSheet) resSheet = ss.insertSheet('Responses');
+  resSheet.clearContents();
+  resSheet.appendRow([
+    'Timestamp', 'Name', 'Sub-Department', 'Correct', 'Total Questions',
+    'Accuracy (%)', 'Base Score', 'Speed Bonus', 'Total Score', 'Time Taken (s)', 'Answers Detail'
+  ]);
+  resSheet.getRange(1, 1, 1, 11).setFontWeight('bold');
+
+  Logger.log('✅ Sheets setup complete. Now run openAssessment() when ready.');
+}
+
+/**
+ * Optional: Schedule auto-close.
+ */
+function autoCloseAfter(minutes) {
+  ScriptApp.newTrigger('closeAssessment')
+    .timeBased()
+    .after(minutes * 60 * 1000)
+    .create();
+  Logger.log('⏰ Auto-close scheduled in ' + minutes + ' minutes.');
+}
