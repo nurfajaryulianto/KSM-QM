@@ -724,6 +724,17 @@ function importParticipants(password, data) {
   return { success: true, message: 'Berhasil mengimpor ' + count + ' nama partisipan.' };
 }
 
+function setConfigValue(sheet, configMap, key, value) {
+  var normalizedKey = key.trim().toLowerCase();
+  var row = configMap[normalizedKey];
+  if (row) {
+    sheet.getRange(row, 2).setValue(value);
+  } else {
+    sheet.appendRow([key, value]);
+    configMap[normalizedKey] = sheet.getLastRow();
+  }
+}
+
 function updateConfig(password, configUpdates) {
   var verification = verifyAdmin(password);
   if (!verification.success) return verification;
@@ -738,48 +749,39 @@ function updateConfig(password, configUpdates) {
   }
   
   if (configUpdates.isOpen !== undefined) {
-    var row = configMap['assessment open'] || 1;
-    sheet.getRange(row, 2).setValue(configUpdates.isOpen);
+    setConfigValue(sheet, configMap, 'Assessment Open', configUpdates.isOpen);
   }
   
   if (configUpdates.title !== undefined) {
-    var row = configMap['assessment title'] || 2;
-    sheet.getRange(row, 2).setValue(configUpdates.title);
+    setConfigValue(sheet, configMap, 'Assessment Title', configUpdates.title);
   }
   
   if (configUpdates.adminPassword !== undefined) {
-    var row = configMap['admin password'] || 3;
-    sheet.getRange(row, 2).setValue(configUpdates.adminPassword);
+    setConfigValue(sheet, configMap, 'Admin Password', configUpdates.adminPassword);
   }
   
   if (configUpdates.enforceWhitelist !== undefined) {
-    var row = configMap['enforce whitelist'] || 4;
-    sheet.getRange(row, 2).setValue(configUpdates.enforceWhitelist);
+    setConfigValue(sheet, configMap, 'Enforce Whitelist', configUpdates.enforceWhitelist);
   }
   
   if (configUpdates.autoOpenTime !== undefined) {
-    var row = configMap['auto open time'] || 5;
-    sheet.getRange(row, 2).setValue(configUpdates.autoOpenTime);
+    setConfigValue(sheet, configMap, 'Auto Open Time', configUpdates.autoOpenTime);
   }
   
   if (configUpdates.autoCloseTime !== undefined) {
-    var row = configMap['auto close time'] || 6;
-    sheet.getRange(row, 2).setValue(configUpdates.autoCloseTime);
+    setConfigValue(sheet, configMap, 'Auto Close Time', configUpdates.autoCloseTime);
   }
   
   if (configUpdates.timeLimitMinutes !== undefined) {
-    var row = configMap['time limit minutes'] || 7;
-    sheet.getRange(row, 2).setValue(Number(configUpdates.timeLimitMinutes) || 10);
+    setConfigValue(sheet, configMap, 'Time Limit Minutes', Number(configUpdates.timeLimitMinutes) || 10);
   }
   
   if (configUpdates.scorePerQuestion !== undefined) {
-    var row = configMap['score per question'] || 8;
-    sheet.getRange(row, 2).setValue(Number(configUpdates.scorePerQuestion) || 10);
+    setConfigValue(sheet, configMap, 'Score Per Question', Number(configUpdates.scorePerQuestion) || 10);
   }
   
   if (configUpdates.maxSpeedBonus !== undefined) {
-    var row = configMap['max speed bonus'] || 9;
-    sheet.getRange(row, 2).setValue(Number(configUpdates.maxSpeedBonus) || 20);
+    setConfigValue(sheet, configMap, 'Max Speed Bonus', Number(configUpdates.maxSpeedBonus) || 20);
   }
   
   return { success: true, message: 'Konfigurasi berhasil disimpan.' };

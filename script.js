@@ -974,3 +974,56 @@ function formatDateTimeLocal(str) {
     }
 }
 
+function downloadExcelTemplate() {
+    var headers = [
+        "Title", 
+        "Difficulty Level", 
+        "Type Questions (Multiple Choice, Essay, Binary)", 
+        "Answer", 
+        "Keywords", 
+        "A", "B", "C", "D", "E"
+    ];
+    
+    var sampleRows = [
+        {
+            "Title": "Siapa pendiri organisasi PMI (Palang Merah Indonesia)?",
+            "Difficulty Level": 1,
+            "Type Questions (Multiple Choice, Essay, Binary)": "Multiple Choice",
+            "Answer": "A",
+            "Keywords": "",
+            "A": "Drs. Moh. Hatta",
+            "B": "Ir. Soekarno",
+            "C": "Sutan Sjahrir",
+            "D": "Ki Hajar Dewantara",
+            "E": "Ki Bagoes Hadikoesoemo"
+        },
+        {
+            "Title": "Apakah singkatan dari QC adalah Quality Control?",
+            "Difficulty Level": 1,
+            "Type Questions (Multiple Choice, Essay, Binary)": "Binary",
+            "Answer": "Benar",
+            "Keywords": "",
+            "A": "Benar",
+            "B": "Salah",
+            "C": "", "D": "", "E": ""
+        },
+        {
+            "Title": "Jelaskan apa tujuan utama dari Quality Control di unit produksi!",
+            "Difficulty Level": 2,
+            "Type Questions (Multiple Choice, Essay, Binary)": "Essay",
+            "Answer": "Tujuan Quality Control adalah memastikan produk yang dihasilkan memenuhi standar kualitas yang ditetapkan perusahaan, mendeteksi cacat sedini mungkin, dan menjaga kepuasan pelanggan.",
+            "Keywords": "standar, kualitas, cacat, kepuasan, pelanggan",
+            "A": "", "B": "", "C": "", "D": "", "E": ""
+        }
+    ];
+
+    try {
+        var ws = XLSX.utils.json_to_sheet(sampleRows, { header: headers });
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Question");
+        XLSX.writeFile(wb, "questions_template.xlsx");
+    } catch(e) {
+        alert("Gagal mengunduh template Excel: " + e.message);
+    }
+}
+
