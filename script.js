@@ -128,7 +128,6 @@ function startAssessment() {
 
 // ---- Quiz init ----
 function initQuiz() {
-    currentQ = 0;
     // Essay questions get empty string, others get -1
     answers = config.questions.map(function (q) {
         return q.type === 'essay' ? '' : -1;
@@ -136,11 +135,12 @@ function initQuiz() {
     secondsLeft = config.timeLimit;
     startTime = Date.now();
     buildDots();
-    renderQuestion();
+    renderAllQuestions();
+    updateProgress();
     startTimer();
 }
 
-// Build dots
+// Build dots as interactive numbered quick-links
 function buildDots() {
     var el = document.getElementById('q-dots');
     el.innerHTML = '';
@@ -148,110 +148,211 @@ function buildDots() {
         var d = document.createElement('div');
         d.className = 'q-dot';
         d.id = 'dot-' + i;
+        d.textContent = i + 1;
+        d.style.cursor = 'pointer';
+        d.title = 'Scroll ke Soal ' + (i + 1);
+        d.onclick = function() {
+            var card = document.getElementById('q-card-' + i);
+            if (card) {
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                highlightDot(i);
+            }
+        };
         el.appendChild(d);
     });
 }
 
-function renderQuestion() {
-    var q = config.questions[currentQ];
-    var n = config.questions.length;
+function renderAllQuestions() {
+    var container = document.getElementById('questions-container');
+    container.innerHTML = '';
 
-    document.getElementById('q-number').textContent = 'QUESTION ' + (currentQ + 1);
-    document.getElementById('q-label-top').textContent = 'Question ' + (currentQ + 1) + ' of ' + n;
-    document.getElementById('q-text').textContent = q.question;
+    // Group questions by type and retain original index
+    var mcQs = [];
+    var binQs = [];
+    var essayQs = [];
 
-    // Update image display
-    var imgEl = document.getElementById('q-image');
-    if (q.imageUrl && q.imageUrl.trim()) {
-        imgEl.src = q.imageUrl.trim();
-        imgEl.style.display = 'block';
-    } else {
-        imgEl.src = '';
-        imgEl.style.display = 'none';
+    config.questions.forEach(function (q, idx) {
+        var qCopy = Object.assign({}, q);
+        qCopy.originalIndex = idx;
+        if (q.type === 'mc') {
+            mcQs.push(qCopy);
+        } else if (q.type === 'binary') {
+            binQs.push(qCopy);
+        } else if (q.type === 'essay') {
+            essayQs.push(qCopy);
+        }
+    });
+
+    if (mcQs.length > 0) {
+        var sec = document.createElement('div');
+        sec.className = 'section-header';
+        sec.innerHTML = '<h2>Pilihan Ganda</h2><span class="text-muted">Pilih satu jawaban yang paling tepat.</span>';
+        container.appendChild(sec);
+        
+        mcQs.forEach(function (q) {
+            container.appendChild(renderQuestionBlock(q));
+        });
     }
 
-    // Update dots status
+    if (binQs.length > 0) {
+        var sec = document.createElement('div');
+        sec.className = 'section-header';
+        sec.innerHTML = '<h2>Benar / Salah</h2><span class="text-muted">Tentukan apakah pernyataan berikut Benar atau Salah.</span>';
+        container.appendChild(sec);
+        
+        binQs.forEach(function (q) {
+            container.appendChild(renderQuestionBlock(q));
+        });
+    }
+
+    if (essayQs.length > 0) {
+        var sec = document.createElement('div');
+        sec.className = 'section-header';
+        sec.innerHTML = '<h2>Essay / Uraian</h2><span class="text-muted">Ketikkan jawaban Anda pada kotak yang disediakan secara lengkap.</span>';
+        container.appendChild(sec);
+        
+        essayQs.forEach(function (q) {
+            container.appendChild(renderQuestionBlock(q));
+        });
+    }
+}
+
+function renderQuestionBlock(q) {
+    var origIdx = q.originalIndex;
+    
+    var card = document.createElement('div');
+    card.className = 'question-card';
+    card.id = 'q-card-' + origIdx;
+    
+    // Soal Number
+    var qNum = document.createElement('div');
+    qNum.className = 'q-number';
+    qNum.textContent = 'QUESTION ' + (origIdx + 1);
+    card.appendChild(qNum);
+    
+    // Soal Text
+    var qText = document.createElement('div');
+    qText.className = 'q-text';
+    qText.textContent = q.question;
+    card.appendChild(qText);
+    
+    // Soal Image
+    if (q.imageUrl && q.imageUrl.trim()) {
+        var img = document.createElement('img');
+        img.className = 'q-image';
+        img.src = q.imageUrl.trim();
+        img.alt = 'Soal Gambar';
+        img.onclick = function() { openImageZoom(img.src); };
+        card.appendChild(img);
+    }
+    
+    // Options or Essay
+    if (q.type === 'essay') {
+        var essayWrap = document.createElement('div');
+        var textarea = document.createElement('textarea');
+        textarea.className = 'textarea-input';
+        textarea.placeholder = 'Ketik jawaban essay Anda di sini...';
+        textarea.value = answers[origIdx] || '';
+        textarea.oninput = function() {
+            saveEssayAnswerAt(origIdx, this.value);
+        };
+        textarea.onfocus = function() {
+            highlightDot(origIdx);
+        };
+        essayWrap.appendChild(textarea);
+        card.appendChild(essayWrap);
+    } else {
+        var optionsDiv = document.createElement('div');
+        optionsDiv.className = 'options';
+        
+        q.options.forEach(function (opt, optIdx) {
+            var div = document.createElement('div');
+            div.className = 'option' + (answers[origIdx] === optIdx ? ' selected' : '');
+            div.id = 'opt-' + origIdx + '-' + optIdx;
+            div.innerHTML =
+                '<div class="option-letter">' + LETTERS[optIdx] + '</div>' +
+                '<span>' + escHtml(opt) + '</span>';
+                
+            div.onclick = function () {
+                selectAnswerAt(origIdx, optIdx);
+            };
+            optionsDiv.appendChild(div);
+        });
+        card.appendChild(optionsDiv);
+    }
+    
+    return card;
+}
+
+function selectAnswerAt(origIdx, optIdx) {
+    answers[origIdx] = optIdx;
+    
+    // Update visual selected states
+    var q = config.questions[origIdx];
+    q.options.forEach(function(_, oIdx) {
+        var el = document.getElementById('opt-' + origIdx + '-' + oIdx);
+        if (el) {
+            if (oIdx === optIdx) {
+                el.classList.add('selected');
+            } else {
+                el.classList.remove('selected');
+            }
+        }
+    });
+    
+    updateProgress();
+    highlightDot(origIdx);
+}
+
+function saveEssayAnswerAt(origIdx, val) {
+    answers[origIdx] = val;
+    updateProgress();
+}
+
+function highlightDot(origIdx) {
+    config.questions.forEach(function (_, i) {
+        var d = document.getElementById('dot-' + i);
+        if (!d) return;
+        
+        var isAnswered = false;
+        var qItem = config.questions[i];
+        if (qItem.type === 'essay') {
+            isAnswered = !!(answers[i] && answers[i].trim());
+        } else {
+            isAnswered = (answers[i] !== -1);
+        }
+        
+        var isCurrent = (i === origIdx);
+        
+        d.className = 'q-dot' + (isCurrent ? ' current' : '') + (isAnswered ? ' answered' : '');
+    });
+}
+
+function updateProgress() {
+    var n = config.questions.length;
+    
     config.questions.forEach(function (qItem, i) {
         var d = document.getElementById('dot-' + i);
-        var isCurrent = (i === currentQ);
+        if (!d) return;
+        
         var isAnswered = false;
         if (qItem.type === 'essay') {
             isAnswered = !!(answers[i] && answers[i].trim());
         } else {
             isAnswered = (answers[i] !== -1);
         }
+        
+        var isCurrent = d.classList.contains('current');
         d.className = 'q-dot' + (isCurrent ? ' current' : '') + (isAnswered ? ' answered' : '');
     });
-
+    
     var unanswered = answers.filter(function (a, i) {
         var qItem = config.questions[i];
         if (qItem.type === 'essay') return !a.trim();
         return a === -1;
     }).length;
+    
     document.getElementById('progress-lbl').textContent = (n - unanswered) + ' / ' + n + ' answered';
-
-    var optionsEl = document.getElementById('q-options');
-    var essayWrapEl = document.getElementById('q-essay-wrap');
-    var essayInput = document.getElementById('input-essay');
-
-    if (q.type === 'essay') {
-        optionsEl.style.display = 'none';
-        essayWrapEl.style.display = 'block';
-        essayInput.value = answers[currentQ] || '';
-    } else {
-        optionsEl.style.display = 'flex';
-        essayWrapEl.style.display = 'none';
-
-        optionsEl.innerHTML = '';
-        q.options.forEach(function (opt, i) {
-            var div = document.createElement('div');
-            div.className = 'option' + (answers[currentQ] === i ? ' selected' : '');
-            div.innerHTML =
-                '<div class="option-letter">' + LETTERS[i] + '</div>' +
-                '<span>' + opt + '</span>';
-            div.onclick = function () { selectAnswer(i); };
-            optionsEl.appendChild(div);
-        });
-    }
-
-    // Nav buttons
-    document.getElementById('btn-prev').style.visibility = currentQ === 0 ? 'hidden' : 'visible';
-    document.getElementById('btn-next').textContent = currentQ === n - 1 ? 'Finish ✓' : 'Next →';
-}
-
-function selectAnswer(i) {
-    answers[currentQ] = i;
-    renderQuestion();
-}
-
-function saveEssayAnswer(val) {
-    answers[currentQ] = val;
-
-    // Live update progress label and dot
-    var n = config.questions.length;
-    var unanswered = answers.filter(function (a, i) {
-        var qItem = config.questions[i];
-        if (qItem.type === 'essay') return !a.trim();
-        return a === -1;
-    }).length;
-    document.getElementById('progress-lbl').textContent = (n - unanswered) + ' / ' + n + ' answered';
-
-    var dot = document.getElementById('dot-' + currentQ);
-    var isAnswered = !!val.trim();
-    dot.className = 'q-dot current' + (isAnswered ? ' answered' : '');
-}
-
-function prevQuestion() {
-    if (currentQ > 0) { currentQ--; renderQuestion(); }
-}
-
-function nextOrSubmit() {
-    if (currentQ < config.questions.length - 1) {
-        currentQ++;
-        renderQuestion();
-    } else {
-        confirmSubmit();
-    }
 }
 
 function confirmSubmit() {
