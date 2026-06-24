@@ -127,6 +127,10 @@ function startAssessment() {
 }
 
 // ---- Quiz init ----
+var activeSections = [];
+var currentSectionIdx = 0;
+var activeQ = -1;
+
 function initQuiz() {
     // Essay questions get empty string, others get -1
     answers = config.questions.map(function (q) {
@@ -134,39 +138,17 @@ function initQuiz() {
     });
     secondsLeft = config.timeLimit;
     startTime = Date.now();
+    
+    groupQuestions();
+    currentSectionIdx = 0;
+    
     buildDots();
-    renderAllQuestions();
+    renderCurrentSection();
     updateProgress();
     startTimer();
 }
 
-// Build dots as interactive numbered quick-links
-function buildDots() {
-    var el = document.getElementById('q-dots');
-    el.innerHTML = '';
-    config.questions.forEach(function (_, i) {
-        var d = document.createElement('div');
-        d.className = 'q-dot';
-        d.id = 'dot-' + i;
-        d.textContent = i + 1;
-        d.style.cursor = 'pointer';
-        d.title = 'Scroll ke Soal ' + (i + 1);
-        d.onclick = function() {
-            var card = document.getElementById('q-card-' + i);
-            if (card) {
-                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                highlightDot(i);
-            }
-        };
-        el.appendChild(d);
-    });
-}
-
-function renderAllQuestions() {
-    var container = document.getElementById('questions-container');
-    container.innerHTML = '';
-
-    // Group questions by type and retain original index
+function groupQuestions() {
     var mcQs = [];
     var binQs = [];
     var essayQs = [];
@@ -183,38 +165,133 @@ function renderAllQuestions() {
         }
     });
 
+    activeSections = [];
     if (mcQs.length > 0) {
-        var sec = document.createElement('div');
-        sec.className = 'section-header';
-        sec.innerHTML = '<h2>Pilihan Ganda</h2><span class="text-muted">Pilih satu jawaban yang paling tepat.</span>';
-        container.appendChild(sec);
-        
-        mcQs.forEach(function (q) {
-            container.appendChild(renderQuestionBlock(q));
+        activeSections.push({
+            type: 'mc',
+            title: 'Pilihan Ganda',
+            desc: 'Pilih satu jawaban yang paling tepat.',
+            questions: mcQs
         });
     }
-
     if (binQs.length > 0) {
-        var sec = document.createElement('div');
-        sec.className = 'section-header';
-        sec.innerHTML = '<h2>Benar / Salah</h2><span class="text-muted">Tentukan apakah pernyataan berikut Benar atau Salah.</span>';
-        container.appendChild(sec);
-        
-        binQs.forEach(function (q) {
-            container.appendChild(renderQuestionBlock(q));
+        activeSections.push({
+            type: 'binary',
+            title: 'Benar / Salah',
+            desc: 'Tentukan apakah pernyataan berikut Benar atau Salah.',
+            questions: binQs
         });
     }
-
     if (essayQs.length > 0) {
-        var sec = document.createElement('div');
-        sec.className = 'section-header';
-        sec.innerHTML = '<h2>Essay / Uraian</h2><span class="text-muted">Ketikkan jawaban Anda pada kotak yang disediakan secara lengkap.</span>';
-        container.appendChild(sec);
-        
-        essayQs.forEach(function (q) {
-            container.appendChild(renderQuestionBlock(q));
+        activeSections.push({
+            type: 'essay',
+            title: 'Essay / Uraian',
+            desc: 'Ketikkan jawaban Anda pada kotak yang disediakan secara lengkap.',
+            questions: essayQs
         });
     }
+}
+
+// Build dots as interactive numbered quick-links across all sections
+function buildDots() {
+    var el = document.getElementById('q-dots');
+    el.innerHTML = '';
+    config.questions.forEach(function (_, i) {
+        var d = document.createElement('div');
+        d.className = 'q-dot';
+        d.id = 'dot-' + i;
+        d.textContent = i + 1;
+        d.style.cursor = 'pointer';
+        d.title = 'Buka Soal ' + (i + 1);
+        d.onclick = function() {
+            var targetSecIdx = -1;
+            for (var sIdx = 0; sIdx < activeSections.length; sIdx++) {
+                var section = activeSections[sIdx];
+                var found = section.questions.some(function(q) {
+                    return q.originalIndex === i;
+                });
+                if (found) {
+                    targetSecIdx = sIdx;
+                    break;
+                }
+            }
+            
+            if (targetSecIdx !== -1) {
+                if (currentSectionIdx !== targetSecIdx) {
+                    currentSectionIdx = targetSecIdx;
+                    renderCurrentSection();
+                }
+                
+                // Wait a tiny bit for render to complete, then scroll to the card
+                setTimeout(function() {
+                    var card = document.getElementById('q-card-' + i);
+                    if (card) {
+                        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        highlightDot(i);
+                    }
+                }, 120);
+            }
+        };
+        el.appendChild(d);
+    });
+}
+
+function renderCurrentSection() {
+    var container = document.getElementById('questions-container');
+    container.innerHTML = '';
+    
+    var section = activeSections[currentSectionIdx];
+    if (!section) return;
+    
+    // Set the active highlighted dot to the first question in this section
+    if (section.questions.length > 0) {
+        activeQ = section.questions[0].originalIndex;
+    }
+    
+    // Render section title and description
+    var secHeader = document.createElement('div');
+    secHeader.className = 'section-header';
+    secHeader.innerHTML = '<h2>' + section.title + '</h2><span class="text-muted">' + section.desc + '</span>';
+    container.appendChild(secHeader);
+    
+    // Render question cards for this section
+    section.questions.forEach(function (q) {
+        container.appendChild(renderQuestionBlock(q));
+    });
+    
+    // Render navigation buttons at the bottom
+    var navRow = document.createElement('div');
+    navRow.className = 'nav-row';
+    navRow.style.marginTop = '2rem';
+    
+    if (currentSectionIdx > 0) {
+        var prevBtn = document.createElement('button');
+        prevBtn.className = 'btn';
+        prevBtn.innerHTML = '&larr; Prev Section';
+        prevBtn.onclick = function() {
+            goToSection(currentSectionIdx - 1);
+        };
+        navRow.appendChild(prevBtn);
+    } else {
+        var spacer = document.createElement('div');
+        navRow.appendChild(spacer);
+    }
+    
+    if (currentSectionIdx < activeSections.length - 1) {
+        var nextBtn = document.createElement('button');
+        nextBtn.className = 'btn btn-primary';
+        var nextSecTitle = activeSections[currentSectionIdx + 1].title;
+        nextBtn.innerHTML = 'Next Section (' + nextSecTitle + ') &rarr;';
+        nextBtn.onclick = function() {
+            goToSection(currentSectionIdx + 1);
+        };
+        navRow.appendChild(nextBtn);
+    }
+    
+    container.appendChild(navRow);
+    
+    // Update dots highlights
+    updateDotHighlights();
 }
 
 function renderQuestionBlock(q) {
@@ -310,27 +387,22 @@ function saveEssayAnswerAt(origIdx, val) {
 }
 
 function highlightDot(origIdx) {
-    config.questions.forEach(function (_, i) {
-        var d = document.getElementById('dot-' + i);
-        if (!d) return;
-        
-        var isAnswered = false;
-        var qItem = config.questions[i];
-        if (qItem.type === 'essay') {
-            isAnswered = !!(answers[i] && answers[i].trim());
-        } else {
-            isAnswered = (answers[i] !== -1);
-        }
-        
-        var isCurrent = (i === origIdx);
-        
-        d.className = 'q-dot' + (isCurrent ? ' current' : '') + (isAnswered ? ' answered' : '');
-    });
+    activeQ = origIdx;
+    updateDotHighlights();
 }
 
-function updateProgress() {
-    var n = config.questions.length;
-    
+function goToSection(idx) {
+    if (idx >= 0 && idx < activeSections.length) {
+        currentSectionIdx = idx;
+        renderCurrentSection();
+        
+        // Scroll to the top of the card
+        var el = document.getElementById('screen-quiz');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+function updateDotHighlights() {
     config.questions.forEach(function (qItem, i) {
         var d = document.getElementById('dot-' + i);
         if (!d) return;
@@ -342,9 +414,15 @@ function updateProgress() {
             isAnswered = (answers[i] !== -1);
         }
         
-        var isCurrent = d.classList.contains('current');
+        var isCurrent = (i === activeQ);
         d.className = 'q-dot' + (isCurrent ? ' current' : '') + (isAnswered ? ' answered' : '');
     });
+}
+
+function updateProgress() {
+    var n = config.questions.length;
+    
+    updateDotHighlights();
     
     var unanswered = answers.filter(function (a, i) {
         var qItem = config.questions[i];
