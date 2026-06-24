@@ -62,6 +62,9 @@
 
                     <button class="btn btn-primary btn-full" onclick="startAssessment()">Start Assessment
                         &rarr;</button>
+                    <button class="btn btn-full" onclick="loadLeaderboard(); showScreen('screen-leaderboard')" style="margin-top: 0.75rem; border-color: var(--purple-100); background: var(--purple-50); color: var(--purple-800);">
+                        🏆 View Leaderboard
+                    </button>
                 </div>
 
                 <div id="form-closed" style="display:none">
@@ -92,7 +95,7 @@
         <div id="screen-quiz" class="screen">
             <div class="card" style="margin-bottom:1rem">
                 <div class="timer-row">
-                    <span id="q-label-top" class="text-muted">Question 1 of 10</span>
+                    <span id="q-label-top" class="text-muted">Assessment Questions</span>
                     <span id="timer-display">10:00</span>
                 </div>
                 <div id="timer-bar-wrap">
@@ -104,24 +107,10 @@
                     <span class="progress-lbl" id="progress-lbl">0 / 10 answered</span>
                 </div>
 
-                <div id="q-number" class="q-number">QUESTION 1</div>
-                <div id="q-text" class="q-text"></div>
-                <img id="q-image" src="" alt="Soal Gambar"
-                    style="display:none; max-width: 100%; border-radius: var(--radius-sm); margin-bottom: 1.25rem; border: 0.5px solid rgba(0,0,0,0.1); cursor: pointer;"
-                    onclick="openImageZoom(this.src)" />
-                <div id="q-options" class="options"></div>
-                <div id="q-essay-wrap" style="display:none">
-                    <textarea id="input-essay" placeholder="Ketik jawaban essay Anda di sini..." class="textarea-input"
-                        oninput="saveEssayAnswer(this.value)"></textarea>
-                </div>
-
-                <div class="nav-row">
-                    <button class="btn" id="btn-prev" onclick="prevQuestion()">&#8592; Previous</button>
-                    <button class="btn btn-primary" id="btn-next" onclick="nextOrSubmit()">Next &rarr;</button>
-                </div>
+                <div id="questions-container"></div>
             </div>
 
-            <button class="btn btn-danger btn-full" onclick="confirmSubmit()">
+            <button class="btn btn-danger btn-full" onclick="confirmSubmit()" style="margin-bottom: 2rem;">
                 Submit Assessment
             </button>
         </div>
