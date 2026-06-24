@@ -520,7 +520,7 @@ function onSubmitResult(res) {
 
 function renderResult(res) {
     document.getElementById('result-name-hero').textContent = 'Kerja Bagus, ' + res.name + '!';
-    document.getElementById('res-total-score').textContent = res.totalScore;
+    document.getElementById('res-total-score').textContent = res.accuracy + '%';
     document.getElementById('res-correct').textContent = res.correctCount + '/' + res.totalQuestions;
     document.getElementById('res-accuracy').textContent = res.accuracy + '%';
     document.getElementById('res-base').textContent = res.baseScore;
@@ -533,13 +533,25 @@ function renderResult(res) {
         document.getElementById('res-time-val').textContent = formatTime(res.timeTaken);
     }
 
-    // Badge
+    // Badge and Remedial text check (Lulus >= 90%, Remedial < 90%)
     var badge = document.getElementById('res-badge');
+    var remedialEl = document.getElementById('res-remedial');
     var pct = res.accuracy;
-    if (pct === 100) { badge.textContent = '🏅 Nilai Sempurna!'; badge.className = 'result-badge badge-gold'; }
-    else if (pct >= 80) { badge.textContent = '★ Sangat Baik!'; badge.className = 'result-badge badge-gold'; }
-    else if (pct >= 60) { badge.textContent = '✓ Lulus / Cukup'; badge.className = 'result-badge badge-pass'; }
-    else { badge.textContent = '△ Perlu Belajar Lagi'; badge.className = 'result-badge badge-fail'; }
+
+    if (pct >= 90) {
+        if (pct === 100) {
+            badge.textContent = '🏅 Nilai Sempurna!';
+            badge.className = 'result-badge badge-gold';
+        } else {
+            badge.textContent = '✓ Lulus';
+            badge.className = 'result-badge badge-pass';
+        }
+        if (remedialEl) remedialEl.style.display = 'none';
+    } else {
+        badge.textContent = '△ Remedial';
+        badge.className = 'result-badge badge-fail';
+        if (remedialEl) remedialEl.style.display = 'block';
+    }
 }
 
 // ---- Leaderboard ----
