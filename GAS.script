@@ -398,7 +398,7 @@ function startSession(nik, name, subDept) {
     
     var registeredName = getParticipantName(nik);
     if (name && registeredName && registeredName.toLowerCase().trim() !== name.toLowerCase().trim()) {
-      return { success: false, message: 'Nama yang dimasukkan tidak sesuai dengan NIK terdaftar. Terdaftar: ' + registeredName };
+      return { success: false, message: 'Nama yang dimasukkan tidak sesuai dengan NIK terdaftar.};
     }
   }
 
