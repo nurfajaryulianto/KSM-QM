@@ -167,7 +167,7 @@ function getConfig() {
   
   sheets.forEach(function(sheet) {
     var name = sheet.getName();
-    if (name !== 'Config' && name !== 'Responses' && name !== 'Participants') {
+    if (name !== 'Config' && name !== 'Responses' && name !== 'Participants' && name !== 'Global' && name.indexOf('Responses') !== 0) {
       subDepts.push(name);
       
       var qCount = 0;
