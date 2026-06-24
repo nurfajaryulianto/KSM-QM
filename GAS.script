@@ -286,11 +286,13 @@ function getQuestionsFromSheet(subDept) {
       : colIndices['Type'];
     var ansIdx = colIndices['Answer'];
     var kwIdx = colIndices['Keywords'];
+    var imgIdx = colIndices['Image URL'] !== undefined ? colIndices['Image URL'] : colIndices['Image'];
     
     var title = String(row[titleIdx]).trim();
     if (!title) continue; // skip blank rows
     
     var difficulty = diffIdx !== undefined ? Number(row[diffIdx]) : 1;
+    var imageUrl = imgIdx !== undefined ? String(row[imgIdx]).trim() : '';
     
     // Normalisasi Type
     var rawType = typeIdx !== undefined ? String(row[typeIdx]).toLowerCase().trim() : '';
@@ -351,7 +353,8 @@ function getQuestionsFromSheet(subDept) {
       options: options,
       answer: answer,
       difficulty: difficulty,
-      keywords: keywords.length > 0 ? keywords : null
+      keywords: keywords.length > 0 ? keywords : null,
+      imageUrl: imageUrl || null
     });
   }
   
@@ -416,7 +419,7 @@ function startSession(nik, name, subDept) {
 
   // Strip answers
   var questionsClient = questionsRaw.map(function (q) {
-    var item = { id: q.id, type: q.type, question: q.question };
+    var item = { id: q.id, type: q.type, question: q.question, imageUrl: q.imageUrl };
     if (q.type === 'mc' || q.type === 'binary') {
       item.options = q.options;
     }
@@ -634,7 +637,7 @@ function importQuestions(password, data) {
     }
     
     // Headers
-    var headers = ['Title', 'Difficulty Level', 'Type', 'Answer', 'Question Knowledge', 'Keywords', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    var headers = ['Title', 'Difficulty Level', 'Type', 'Answer', 'Question Knowledge', 'Keywords', 'Image URL', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
     sheet.appendRow(headers);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
     
@@ -660,6 +663,7 @@ function importQuestions(password, data) {
       
       row.push(item.questionKnowledge || '');
       row.push(item.keywords ? item.keywords.join(', ') : '');
+      row.push(item.imageUrl || '');
       
       var options = item.options || [];
       for (var optIdx = 0; optIdx < 10; optIdx++) {

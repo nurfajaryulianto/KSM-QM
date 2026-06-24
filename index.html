@@ -100,6 +100,7 @@
 
                 <div id="q-number" class="q-number">QUESTION 1</div>
                 <div id="q-text" class="q-text"></div>
+                <img id="q-image" src="" alt="Soal Gambar" style="display:none; max-width: 100%; border-radius: var(--radius-sm); margin-bottom: 1.25rem; border: 0.5px solid rgba(0,0,0,0.1); cursor: pointer;" onclick="openImageZoom(this.src)" />
                 <div id="q-options" class="options"></div>
                 <div id="q-essay-wrap" style="display:none">
                     <textarea id="input-essay" placeholder="Ketik jawaban essay Anda di sini..." class="textarea-input" oninput="saveEssayAnswer(this.value)"></textarea>
@@ -313,6 +314,12 @@
             </div>
         </div>
 
+    </div>
+    
+    <!-- Lightbox Modal for Image Zoom -->
+    <div id="modal-image-zoom" class="modal-overlay" style="display:none; z-index: 1100; cursor: zoom-out;" onclick="closeImageZoom()">
+        <span class="btn-close" style="position: absolute; top: 20px; right: 20px; color: #fff; font-size: 36px; cursor: pointer;">&times;</span>
+        <img id="zoom-img-content" src="" alt="Zoomed View" style="max-width: 90%; max-height: 90%; border-radius: var(--radius-sm); box-shadow: 0 10px 30px rgba(0,0,0,0.5); object-fit: contain; cursor: zoom-out;" />
     </div>
 
     <script src="script.js"></script>

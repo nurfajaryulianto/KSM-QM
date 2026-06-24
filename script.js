@@ -160,6 +160,16 @@ function renderQuestion() {
     document.getElementById('q-label-top').textContent = 'Question ' + (currentQ + 1) + ' of ' + n;
     document.getElementById('q-text').textContent = q.question;
 
+    // Update image display
+    var imgEl = document.getElementById('q-image');
+    if (q.imageUrl && q.imageUrl.trim()) {
+        imgEl.src = q.imageUrl.trim();
+        imgEl.style.display = 'block';
+    } else {
+        imgEl.src = '';
+        imgEl.style.display = 'none';
+    }
+
     // Update dots status
     config.questions.forEach(function (qItem, i) {
         var d = document.getElementById('dot-' + i);
@@ -725,6 +735,8 @@ function handleQuestionsUpload() {
                         keywords = String(row['Keywords']).split(',').map(function(k) { return k.trim(); }).filter(Boolean);
                     }
                     
+                    var imageUrl = String(row['Image URL'] || row['Image'] || '').trim();
+
                     questions.push({
                         question: questionText,
                         difficulty: parseInt(diffLevel) || 1,
@@ -732,7 +744,8 @@ function handleQuestionsUpload() {
                         options: options,
                         answer: answer,
                         questionKnowledge: row['Question Knowledge'] || '',
-                        keywords: keywords
+                        keywords: keywords,
+                        imageUrl: imageUrl
                     });
                 });
                 
@@ -974,6 +987,17 @@ function formatDateTimeLocal(str) {
     }
 }
 
+function openImageZoom(src) {
+    if (!src) return;
+    document.getElementById('zoom-img-content').src = src;
+    document.getElementById('modal-image-zoom').style.display = 'flex';
+}
+
+function closeImageZoom() {
+    document.getElementById('modal-image-zoom').style.display = 'none';
+    document.getElementById('zoom-img-content').src = '';
+}
+
 function downloadExcelTemplate() {
     var headers = [
         "Title", 
@@ -981,6 +1005,7 @@ function downloadExcelTemplate() {
         "Type Questions (Multiple Choice, Essay, Binary)", 
         "Answer", 
         "Keywords", 
+        "Image URL",
         "A", "B", "C", "D", "E"
     ];
     
@@ -991,6 +1016,7 @@ function downloadExcelTemplate() {
             "Type Questions (Multiple Choice, Essay, Binary)": "Multiple Choice",
             "Answer": "A",
             "Keywords": "",
+            "Image URL": "",
             "A": "Drs. Moh. Hatta",
             "B": "Ir. Soekarno",
             "C": "Sutan Sjahrir",
@@ -998,11 +1024,12 @@ function downloadExcelTemplate() {
             "E": "Ki Bagoes Hadikoesoemo"
         },
         {
-            "Title": "Apakah singkatan dari QC adalah Quality Control?",
+            "Title": "Apakah gambar logo KSM berwarna biru?",
             "Difficulty Level": 1,
             "Type Questions (Multiple Choice, Essay, Binary)": "Binary",
             "Answer": "Benar",
             "Keywords": "",
+            "Image URL": "https://picsum.photos/400/200",
             "A": "Benar",
             "B": "Salah",
             "C": "", "D": "", "E": ""
@@ -1013,6 +1040,7 @@ function downloadExcelTemplate() {
             "Type Questions (Multiple Choice, Essay, Binary)": "Essay",
             "Answer": "Tujuan Quality Control adalah memastikan produk yang dihasilkan memenuhi standar kualitas yang ditetapkan perusahaan, mendeteksi cacat sedini mungkin, dan menjaga kepuasan pelanggan.",
             "Keywords": "standar, kualitas, cacat, kepuasan, pelanggan",
+            "Image URL": "",
             "A": "", "B": "", "C": "", "D": "", "E": ""
         }
     ];
