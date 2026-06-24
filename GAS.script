@@ -398,7 +398,7 @@ function startSession(nik, name, subDept) {
     
     var registeredName = getParticipantName(nik);
     if (name && registeredName && registeredName.toLowerCase().trim() !== name.toLowerCase().trim()) {
-      return { success: false, message: 'Nama yang dimasukkan tidak sesuai dengan NIK terdaftar.};
+      return { success: false, message: 'Nama yang dimasukkan tidak sesuai dengan NIK terdaftar.'};
     }
   }
 
@@ -479,11 +479,18 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
   } catch(e) {
     return { success: false, message: 'Gagal mengambil kunci jawaban: ' + e.toString() };
   }
-
+  
   var correctCount = 0;
   var baseScore = 0;
+  
+  var mcCorrect = 0;
+  var binaryCorrect = 0;
+  var essayCorrect = 0;
 
   questionsList.forEach(function (q, i) {
+    var qScore = 0;
+    var isCorrect = false;
+    
     if (q.type === 'essay') {
       var ansText = String(answers[i] || '').toLowerCase().trim();
       var matchCount = 0;
@@ -494,21 +501,38 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
           }
         });
         if (matchCount >= 2) {
-          baseScore += scorePerQuestion;
-          correctCount++;
+          qScore = scorePerQuestion;
+          isCorrect = true;
         } else if (matchCount === 1) {
-          baseScore += (scorePerQuestion / 2);
-          correctCount += 0.5;
+          qScore = (scorePerQuestion / 2);
         }
       } else {
         if (ansText.length > 10) {
-          baseScore += scorePerQuestion;
-          correctCount++;
+          qScore = scorePerQuestion;
+          isCorrect = true;
         }
       }
-    } else {
+      
+      essayCorrect += qScore;
+      baseScore += qScore;
+      if (isCorrect) {
+        correctCount++;
+      } else if (qScore > 0) {
+        correctCount += 0.5;
+      }
+      
+    } else if (q.type === 'binary') {
       if (Number(answers[i]) === q.answer) {
-        baseScore += scorePerQuestion;
+        qScore = scorePerQuestion;
+        binaryCorrect += qScore;
+        baseScore += qScore;
+        correctCount++;
+      }
+    } else { // mc
+      if (Number(answers[i]) === q.answer) {
+        qScore = scorePerQuestion;
+        mcCorrect += qScore;
+        baseScore += qScore;
         correctCount++;
       }
     }
@@ -520,7 +544,7 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
   var totalScore = baseScore + speedBonus;
   var accuracy = Math.round((correctCount / questionsList.length) * 100);
 
-  // Persist to sheet (adding NIK as column 2)
+  // Persist to master Responses sheet
   var responseSheet = ss.getSheetByName('Responses');
   
   var finalName = name.trim();
@@ -529,20 +553,75 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
     if (whitelistedName) finalName = whitelistedName;
   }
 
-  responseSheet.appendRow([
-    new Date(),
-    nik.trim(),
-    finalName,
-    subDept,
-    correctCount,
-    questionsList.length,
-    accuracy,
-    baseScore,
-    speedBonus,
-    totalScore,
-    timeTaken,
-    JSON.stringify(answers)
-  ]);
+  if (responseSheet) {
+    // Auto-fix misaligned headers in master Responses sheet if NIK column is missing
+    var firstRow = responseSheet.getRange(1, 1, 1, 12).getValues()[0];
+    if (firstRow[1] !== 'NIK' || firstRow[2] !== 'Name') {
+      responseSheet.getRange(1, 1, 1, 12).setValues([[
+        'Timestamp', 'NIK', 'Name', 'Sub-Department', 'Correct', 'Total Questions',
+        'Accuracy (%)', 'Base Score', 'Speed Bonus', 'Total Score', 'Time Taken (s)', 'Answers Detail'
+      ]]);
+      responseSheet.getRange(1, 1, 1, 12).setFontWeight('bold');
+    }
+    
+    responseSheet.appendRow([
+      new Date(),
+      nik.trim(),
+      finalName,
+      subDept,
+      correctCount,
+      questionsList.length,
+      accuracy,
+      baseScore,
+      speedBonus,
+      totalScore,
+      timeTaken,
+      JSON.stringify(answers)
+    ]);
+  }
+
+  // Persist to detailed sub-department response sheet
+  try {
+    var detailedSheet = getOrCreateDetailedResponseSheet(ss, subDept, questionsList);
+    var scoreFraction = totalScore + " / " + ((questionsList.length * scorePerQuestion) + maxSpeedBonus);
+    
+    var detailedRow = [
+      new Date(),
+      scoreFraction,
+      finalName,
+      nik.trim(),
+      subDept,
+      timeTaken,
+      mcCorrect,
+      binaryCorrect,
+      essayCorrect,
+      totalScore
+    ];
+    
+    var choiceLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    questionsList.forEach(function(q, i) {
+      var ansVal = answers[i];
+      if (ansVal === undefined || ansVal === null || ansVal === -1 || ansVal === '') {
+        detailedRow.push('');
+      } else {
+        if (q.type === 'essay') {
+          detailedRow.push(ansVal);
+        } else {
+          var idx = Number(ansVal);
+          var optionText = q.options[idx] || '';
+          if (q.type === 'mc') {
+            var letter = choiceLetters[idx] || '';
+            detailedRow.push(letter ? letter + ". " + optionText : optionText);
+          } else {
+            detailedRow.push(optionText);
+          }
+        }
+      }
+    });
+    detailedSheet.appendRow(detailedRow);
+  } catch (e) {
+    Logger.log("Error writing detailed response sheet: " + e.message);
+  }
 
   return {
     success: true,
@@ -862,4 +941,65 @@ function autoCloseAfter(minutes) {
     .after(minutes * 60 * 1000)
     .create();
   Logger.log('⏰ Auto-close scheduled in ' + minutes + ' minutes.');
+}
+
+/**
+ * Helper to get or create detailed sub-department response sheet
+ */
+function getOrCreateDetailedResponseSheet(ss, subDept, questionsList) {
+  var sheetName = 'Responses - ' + subDept;
+  var sheet = ss.getSheetByName(sheetName);
+  if (sheet) {
+    return sheet;
+  }
+  
+  sheet = ss.insertSheet(sheetName);
+  var numQuestions = questionsList.length;
+  
+  // Row 1: Merged headers
+  sheet.getRange(1, 1).setValue("Data");
+  sheet.getRange(1, 7).setValue("Correct");
+  sheet.getRange(1, 11).setValue("Answers Detail");
+  
+  sheet.getRange("A1:F1").merge().setHorizontalAlignment("center").setFontWeight("bold").setBackground("#f3f3f3");
+  sheet.getRange("G1:J1").merge().setHorizontalAlignment("center").setFontWeight("bold").setBackground("#d9ead3");
+  
+  var lastColIndex = 11 + numQuestions - 1;
+  var colLetterEnd = getColumnLetter(lastColIndex);
+  sheet.getRange("K1:" + colLetterEnd + "1").merge().setHorizontalAlignment("center").setFontWeight("bold").setBackground("#c9daf8");
+  
+  // Row 2: Sub-headers
+  var headers = [
+    "Timestamp",
+    "Score",
+    "Nama",
+    "NIK",
+    "Sub-Department",
+    "Time Taken (s)",
+    "Multiple Choice",
+    "Binary",
+    "Essay",
+    "Total Score"
+  ];
+  
+  questionsList.forEach(function(q, idx) {
+    headers.push("Q" + (idx + 1) + ": " + q.question);
+  });
+  
+  sheet.appendRow(headers);
+  sheet.getRange(2, 1, 1, headers.length).setFontWeight("bold");
+  sheet.setFrozenRows(2);
+  
+  return sheet;
+}
+
+// Helper to convert column index to letter (A, B, C... Z, AA, AB...)
+function getColumnLetter(col) {
+  var temp, letter = "";
+  while (col > 0) {
+    temp = (col - 1) % 26;
+    letter = String.fromCharCode(65 + temp) + letter;
+    col = (col - temp - 1) / 26;
+  }
+  return letter;
 }
