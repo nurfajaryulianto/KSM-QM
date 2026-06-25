@@ -65,6 +65,30 @@ function onConfigLoaded(cfg) {
         document.getElementById('form-closed').style.display = 'block';
     }
 
+    // Check if there is an active draft in localStorage
+    var draftRaw = localStorage.getItem(DRAFT_KEY);
+    if (draftRaw) {
+        try {
+            var draft = JSON.parse(draftRaw);
+            var timeLeft = Math.floor((draft.deadlineTime - Date.now()) / 1000);
+            if (timeLeft > 0 && draft.nik && draft.questions && draft.questions.length > 0) {
+                var confirmResume = confirm("Sesi pengerjaan sebelumnya untuk NIK " + draft.nik + " ditemukan dengan sisa waktu " + formatTime(timeLeft) + ". Lanjutkan pengerjaan?");
+                if (confirmResume) {
+                    resumeQuiz(draft);
+                    // Attempt to resend any pending submissions from previous failures
+                    processPendingSubmissions();
+                    return;
+                } else {
+                    clearQuizDraft();
+                }
+            } else {
+                clearQuizDraft();
+            }
+        } catch (e) {
+            clearQuizDraft();
+        }
+    }
+
     setupClosedScreen(cfg);
     showScreen('screen-register');
     // Attempt to resend any pending submissions from previous failures
@@ -149,6 +173,7 @@ function initQuiz() {
     renderCurrentSection();
     updateProgress();
     startTimer();
+    saveQuizDraft();
 }
 
 function groupQuestions() {
@@ -382,11 +407,13 @@ function selectAnswerAt(origIdx, optIdx) {
 
     updateProgress();
     highlightDot(origIdx);
+    saveQuizDraft();
 }
 
 function saveEssayAnswerAt(origIdx, val) {
     answers[origIdx] = val;
     updateProgress();
+    saveQuizDraft();
 }
 
 function highlightDot(origIdx) {
@@ -476,7 +503,6 @@ function updateTimerDisplay() {
 }
 
 // ---- Submit ----
-// ---- Submit ----
 function submitNow() {
     clearInterval(timerInterval);
     var timeTaken = Math.floor((Date.now() - startTime) / 1000);
@@ -494,6 +520,9 @@ function submitNow() {
 
     // Store pending submission locally (will be cleared on success)
     addPendingSubmission(payload);
+
+    // Clear draft since the user submitted (they can't resume it anymore)
+    clearQuizDraft();
 
     showScreen('screen-loading');
     document.getElementById('screen-loading').innerHTML =
@@ -572,6 +601,64 @@ function processPendingSubmissions() {
             });
     });
 }
+
+// LocalStorage helpers for active quiz session drafts (auto-save and resume)
+const DRAFT_KEY = 'activeQuizDraft';
+
+function saveQuizDraft() {
+    if (!myNik) return;
+    var draft = {
+        nik: myNik,
+        name: myName,
+        subDept: mySubDept,
+        questions: config.questions,
+        timeLimit: config.timeLimit,
+        totalQuestions: config.totalQuestions,
+        maxScore: config.maxScore,
+        answers: answers,
+        deadlineTime: Date.now() + (secondsLeft * 1000)
+    };
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+}
+
+function clearQuizDraft() {
+    localStorage.removeItem(DRAFT_KEY);
+}
+
+function resumeQuiz(draft) {
+    myNik = draft.nik;
+    myName = draft.name;
+    mySubDept = draft.subDept;
+
+    config.questions = draft.questions;
+    config.timeLimit = draft.timeLimit;
+    config.totalQuestions = draft.totalQuestions;
+    config.maxScore = draft.maxScore;
+
+    answers = draft.answers;
+    secondsLeft = Math.floor((draft.deadlineTime - Date.now()) / 1000);
+    // approximate startTime based on time elapsed
+    startTime = Date.now() - (draft.timeLimit - secondsLeft) * 1000;
+
+    groupQuestions();
+    currentSectionIdx = 0;
+
+    buildDots();
+    renderCurrentSection();
+    updateProgress();
+
+    showScreen('screen-quiz');
+    startTimer();
+}
+
+// Warn user before leaving page during active assessment
+window.onbeforeunload = function (e) {
+    if (myNik && secondsLeft > 0) {
+        var msg = "Kuis sedang berlangsung. Jika Anda keluar, waktu pengerjaan akan tetap berjalan.";
+        e.returnValue = msg;
+        return msg;
+    }
+};
 
 // ---- Helpers ----
 function showScreen(id) {
@@ -753,39 +840,6 @@ function saveAssessmentSettings() {
             alert('Error: ' + e.message);
         });
 }
-
-clearInterval(timerInterval);
-var timeTaken = Math.floor((Date.now() - startTime) / 1000);
-
-showScreen('screen-loading');
-document.getElementById('screen-loading').innerHTML =
-    '<div class="loading"><div class="spin" style="font-size:28px">⟳</div><p style="margin-top:1rem">Mengirimkan jawaban Anda...</p></div>';
-
-var payload = {
-    nik: myNik,
-    name: myName,
-    subDept: mySubDept,
-    answers: answers,
-    timeTaken: timeTaken
-};
-
-fetch(GAS_URL, {
-    method: 'POST',
-    headers: {
-        'Content-Type': 'text/plain' // Using text/plain to avoid preflight CORS request complexity
-    },
-    body: JSON.stringify(payload)
-})
-    .then(function (res) {
-        return res.json();
-    })
-    .then(onSubmitResult)
-    .catch(function (e) {
-        alert('Pengiriman gagal: ' + e.message + '\nSilakan coba lagi.');
-        showScreen('screen-quiz');
-        startTimer();
-    });
-
 
 function onSubmitResult(res) {
     if (!res.success) {
