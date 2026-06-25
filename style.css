@@ -904,3 +904,35 @@ input[type="datetime-local"]:focus {
     line-height: 1.45;
 }
 
+/* ---- Custom Modal Animations & Styling ---- */
+@keyframes modalPopUp {
+    0% {
+        opacity: 0;
+        transform: scale(0.92) translateY(10px);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) translateY(0);
+    }
+}
+
+#custom-modal .modal-card {
+    border: none;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.15), 0 15px 25px -10px rgba(0, 0, 0, 0.1);
+}
+
+#custom-modal .modal-body {
+    border-radius: var(--radius);
+}
+
+#custom-modal-title {
+    margin-bottom: 0.5rem;
+}
+
+#custom-modal-message {
+    color: var(--gray-600);
+    font-size: 14.5px;
+    line-height: 1.55;
+}
+

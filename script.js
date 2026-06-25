@@ -13,6 +13,86 @@ var myResult = null;
 var allLbData = [];
 var LETTERS = ['A', 'B', 'C', 'D', 'E'];
 
+// ---- Custom Modal Dialog Helpers ----
+function showCustomModal(options) {
+    var modal = document.getElementById('custom-modal');
+    if (!modal) return;
+
+    var iconEl = document.getElementById('custom-modal-icon');
+    var titleEl = document.getElementById('custom-modal-title');
+    var msgEl = document.getElementById('custom-modal-message');
+    var btnCancel = document.getElementById('custom-modal-btn-cancel');
+    var btnConfirm = document.getElementById('custom-modal-btn-confirm');
+
+    // Icon based on type
+    var icon = 'ℹ️';
+    if (options.type === 'success') icon = '✅';
+    else if (options.type === 'warning') icon = '⚠️';
+    else if (options.type === 'danger') icon = '🚨';
+    else if (options.type === 'confirm') icon = '❓';
+    
+    iconEl.textContent = icon;
+    titleEl.textContent = options.title || 'Notifikasi';
+    msgEl.textContent = options.message || '';
+
+    // Action buttons
+    if (options.showCancel) {
+        btnCancel.style.display = 'block';
+        btnCancel.textContent = options.cancelText || 'Batal';
+    } else {
+        btnCancel.style.display = 'none';
+    }
+
+    btnConfirm.textContent = options.confirmText || 'OK';
+
+    // Set buttons handlers
+    btnConfirm.onclick = function () {
+        modal.style.display = 'none';
+        if (options.onConfirm) options.onConfirm();
+    };
+
+    btnCancel.onclick = function () {
+        modal.style.display = 'none';
+        if (options.onCancel) options.onCancel();
+    };
+
+    modal.style.display = 'flex';
+}
+
+function customAlert(message, title, type) {
+    return new Promise(function (resolve) {
+        showCustomModal({
+            title: title || 'Notifikasi',
+            message: message,
+            type: type || 'info',
+            showCancel: false,
+            confirmText: 'OK',
+            onConfirm: function () {
+                resolve();
+            }
+        });
+    });
+}
+
+function customConfirm(message, title, type) {
+    return new Promise(function (resolve) {
+        showCustomModal({
+            title: title || 'Konfirmasi',
+            message: message,
+            type: type || 'confirm',
+            showCancel: true,
+            confirmText: 'Ya',
+            cancelText: 'Batal',
+            onConfirm: function () {
+                resolve(true);
+            },
+            onCancel: function () {
+                resolve(false);
+            }
+        });
+    });
+}
+
 // ---- Boot ----
 window.onload = function () {
     fetch(GAS_URL + "?action=getConfig")
@@ -72,15 +152,24 @@ function onConfigLoaded(cfg) {
             var draft = JSON.parse(draftRaw);
             var timeLeft = Math.floor((draft.deadlineTime - Date.now()) / 1000);
             if (timeLeft > 0 && draft.nik && draft.questions && draft.questions.length > 0) {
-                var confirmResume = confirm("Sesi pengerjaan sebelumnya untuk NIK " + draft.nik + " ditemukan dengan sisa waktu " + formatTime(timeLeft) + ". Lanjutkan pengerjaan?");
-                if (confirmResume) {
-                    resumeQuiz(draft);
-                    // Attempt to resend any pending submissions from previous failures
-                    processPendingSubmissions();
-                    return;
-                } else {
-                    clearQuizDraft();
-                }
+                customConfirm(
+                    "Sesi pengerjaan sebelumnya untuk NIK " + draft.nik + " ditemukan dengan sisa waktu " + formatTime(timeLeft) + ". Lanjutkan pengerjaan?",
+                    "Lanjutkan Sesi?",
+                    "confirm"
+                ).then(function (confirmResume) {
+                    if (confirmResume) {
+                        resumeQuiz(draft);
+                        // Attempt to resend any pending submissions from previous failures
+                        processPendingSubmissions();
+                    } else {
+                        clearQuizDraft();
+                        setupClosedScreen(cfg);
+                        showScreen('screen-register');
+                        // Attempt to resend any pending submissions from previous failures
+                        processPendingSubmissions();
+                    }
+                });
+                return;
             } else {
                 clearQuizDraft();
             }
@@ -473,8 +562,15 @@ function confirmSubmit() {
     var msg = unanswered > 0
         ? 'Anda memiliki ' + unanswered + ' soal yang belum dijawab. Tetap kirim?'
         : 'Kirim jawaban assessment Anda? Jawaban tidak dapat diubah setelah dikirim.';
-    if (!confirm(msg)) return;
-    submitNow();
+    
+    var title = unanswered > 0 ? 'Soal Belum Selesai' : 'Kirim Jawaban?';
+    var type = unanswered > 0 ? 'warning' : 'confirm';
+
+    customConfirm(msg, title, type).then(function (confirmed) {
+        if (confirmed) {
+            submitNow();
+        }
+    });
 }
 
 // ---- Timer ----
@@ -485,8 +581,12 @@ function startTimer() {
         updateTimerDisplay();
         if (secondsLeft <= 0) {
             clearInterval(timerInterval);
-            alert('Waktu pengerjaan habis! Jawaban Anda akan otomatis dikirim sekarang.');
-            submitNow();
+            showScreen('screen-loading');
+            document.getElementById('screen-loading').innerHTML =
+                '<div class="loading"><div class="spin" style="font-size:28px">⟳</div><p style="margin-top:1rem">Waktu pengerjaan habis! Mengirimkan jawaban Anda otomatis...</p></div>';
+            customAlert('Waktu pengerjaan kuis telah habis! Jawaban Anda akan otomatis dikirimkan ke server.', 'Waktu Habis', 'warning').then(function () {
+                submitNow(true);
+            });
         }
     }, 1000);
 }
@@ -503,7 +603,7 @@ function updateTimerDisplay() {
 }
 
 // ---- Submit ----
-function submitNow() {
+function submitNow(isTimeout) {
     clearInterval(timerInterval);
     var timeTaken = Math.floor((Date.now() - startTime) / 1000);
 
@@ -525,8 +625,11 @@ function submitNow() {
     clearQuizDraft();
 
     showScreen('screen-loading');
+    var loadingText = isTimeout
+        ? 'Waktu pengerjaan habis! Mengirimkan jawaban Anda otomatis...'
+        : 'Mengirimkan jawaban Anda...';
     document.getElementById('screen-loading').innerHTML =
-        '<div class="loading"><div class="spin" style="font-size:28px">⟳</div><p style="margin-top:1rem">Mengirimkan jawaban Anda...</p></div>';
+        '<div class="loading"><div class="spin" style="font-size:28px">⟳</div><p style="margin-top:1rem">' + loadingText + '</p></div>';
 
     fetch(GAS_URL, {
         method: 'POST',
@@ -540,9 +643,10 @@ function submitNow() {
             onSubmitResult(res);
         })
         .catch(function (e) {
-            alert('Pengiriman gagal: ' + e.message + '\nSilakan coba lagi.');
-            showScreen('screen-quiz');
-            startTimer();
+            customAlert('Pengiriman gagal: ' + e.message + '\nSilakan coba lagi.', 'Gagal Mengirim', 'danger').then(function() {
+                showScreen('screen-quiz');
+                startTimer();
+            });
             // Keep the payload in pending storage for later retry
         });
 }
@@ -660,191 +764,12 @@ window.onbeforeunload = function (e) {
     }
 };
 
-// ---- Helpers ----
-function showScreen(id) {
-    document.querySelectorAll('.screen').forEach(function (s) { s.classList.remove('active'); });
-    document.getElementById(id).classList.add('active');
-}
-
-function formatTime(s) {
-    var m = Math.floor(s / 60);
-    var sec = s % 60;
-    return m + ':' + (sec < 10 ? '0' : '') + sec;
-}
-
-function showError(el, msg) {
-    el.textContent = msg;
-    el.style.display = 'block';
-}
-
-function escHtml(str) {
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;');
-}
-
-// ---- Admin Panel Logic ----
-var adminPasswordSession = '';
-
-function showAdminSubView(viewId) {
-    document.getElementById('admin-menu-select').style.display = 'none';
-    document.getElementById('admin-participants-view').style.display = 'none';
-    document.getElementById('admin-assessment-view').style.display = 'none';
-    document.getElementById(viewId).style.display = 'block';
-}
-
-function openAdminModal() {
-    document.getElementById('modal-admin').style.display = 'flex';
-    document.getElementById('admin-login-view').style.display = 'block';
-    document.getElementById('admin-dashboard-view').style.display = 'none';
-    document.getElementById('input-admin-password').value = '';
-    document.getElementById('admin-login-error').style.display = 'none';
-}
-
-function closeAdminModal() {
-    document.getElementById('modal-admin').style.display = 'none';
-}
-
-function loginAdmin() {
-    var password = document.getElementById('input-admin-password').value;
-    var errEl = document.getElementById('admin-login-error');
-    errEl.style.display = 'none';
-
-    if (!password) { showError(errEl, 'Password cannot be empty.'); return; }
-
-    // Call GAS verifyAdmin
-    fetch(GAS_URL + '?action=verifyAdmin&password=' + encodeURIComponent(password))
-        .then(function (res) { return res.json(); })
-        .then(function (res) {
-            if (res.success) {
-                adminPasswordSession = password;
-                document.getElementById('admin-login-view').style.display = 'none';
-                document.getElementById('admin-dashboard-view').style.display = 'block';
-                showAdminSubView('admin-menu-select');
-
-                // Load current configs to form
-                document.getElementById('check-assessment-open').checked = !!config.isOpen;
-                document.getElementById('check-enforce-whitelist').checked = !!config.enforceWhitelist;
-                document.getElementById('input-assessment-title').value = config.title || '';
-                document.getElementById('input-new-admin-password').value = '';
-
-                document.getElementById('input-auto-open').value = formatDateTimeLocal(config.autoOpenTime);
-                document.getElementById('input-auto-close').value = formatDateTimeLocal(config.autoCloseTime);
-                document.getElementById('input-time-limit').value = config.timeLimitMinutes || 10;
-                document.getElementById('input-score-per-q').value = config.scorePerQuestion || 10;
-                document.getElementById('input-speed-bonus').value = config.maxSpeedBonus || 20;
-
-                document.getElementById('questions-upload-status').style.display = 'none';
-                document.getElementById('participants-upload-status').style.display = 'none';
-                document.getElementById('file-questions-excel').value = '';
-                document.getElementById('textarea-participants').value = '';
-            } else {
-                showError(errEl, res.message || 'Incorrect password.');
-            }
-        })
-        .catch(function (e) {
-            showError(errEl, 'Connection error: ' + e.message);
-        });
-}
-
-function saveParticipantSettings() {
-    var enforceWhitelist = document.getElementById('check-enforce-whitelist').checked;
-
-    var payload = {
-        action: 'updateConfig',
-        password: adminPasswordSession,
-        config: {
-            enforceWhitelist: enforceWhitelist
-        }
-    };
-
-    fetch(GAS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload)
-    })
-        .then(function (res) { return res.json(); })
-        .then(function (res) {
-            if (res.success) {
-                alert('Pengaturan whitelist berhasil disimpan!');
-                location.reload();
-            } else {
-                alert('Gagal menyimpan whitelist: ' + res.message);
-            }
-        })
-        .catch(function (e) {
-            alert('Error: ' + e.message);
-        });
-}
-
-function saveAssessmentSettings() {
-    var isOpen = document.getElementById('check-assessment-open').checked;
-    var title = document.getElementById('input-assessment-title').value.trim();
-    var autoOpenTime = document.getElementById('input-auto-open').value;
-    var autoCloseTime = document.getElementById('input-auto-close').value;
-    var timeLimitMinutes = parseInt(document.getElementById('input-time-limit').value) || 10;
-    var scorePerQuestion = parseInt(document.getElementById('input-score-per-q').value) || 10;
-    var maxSpeedBonus = parseInt(document.getElementById('input-speed-bonus').value) || 0;
-
-    if (timeLimitMinutes <= 0) {
-        alert('Batas waktu pengerjaan kuis harus lebih dari 0 menit.');
-        return;
-    }
-    if (scorePerQuestion <= 0) {
-        alert('Skor per soal harus lebih dari 0.');
-        return;
-    }
-    if (maxSpeedBonus < 0) {
-        alert('Max bonus kecepatan tidak boleh negatif.');
-        return;
-    }
-    if (autoOpenTime && autoCloseTime) {
-        var openD = new Date(autoOpenTime).getTime();
-        var closeD = new Date(autoCloseTime).getTime();
-        if (closeD <= openD) {
-            alert('Jadwal Tutup Otomatis harus setelah Jadwal Buka Otomatis.');
-            return;
-        }
-    }
-
-    var payload = {
-        action: 'updateConfig',
-        password: adminPasswordSession,
-        config: {
-            isOpen: isOpen,
-            title: title,
-            autoOpenTime: autoOpenTime,
-            autoCloseTime: autoCloseTime,
-            timeLimitMinutes: timeLimitMinutes,
-            scorePerQuestion: scorePerQuestion,
-            maxSpeedBonus: maxSpeedBonus
-        }
-    };
-
-    fetch(GAS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload)
-    })
-        .then(function (res) { return res.json(); })
-        .then(function (res) {
-            if (res.success) {
-                alert('Pengaturan assessment berhasil disimpan!');
-                location.reload();
-            } else {
-                alert('Gagal menyimpan: ' + res.message);
-            }
-        })
-        .catch(function (e) {
-            alert('Error: ' + e.message);
-        });
-}
 
 function onSubmitResult(res) {
     if (!res.success) {
-        alert(res.message);
-        showScreen('screen-register');
+        customAlert(res.message, 'Gagal', 'danger').then(function () {
+            showScreen('screen-register');
+        });
         return;
     }
     myResult = res;
@@ -1068,16 +993,15 @@ function saveParticipantSettings() {
         .then(function (res) { return res.json(); })
         .then(function (res) {
             if (res.success) {
-                alert('Pengaturan whitelist berhasil disimpan!');
-                // Update local config value so the form updates without full reload if we just switch sub-views, 
-                // but reload is fine too since it refreshes all states. Let's do reload.
-                location.reload();
+                customAlert('Pengaturan whitelist berhasil disimpan!', 'Sukses', 'success').then(function() {
+                    location.reload();
+                });
             } else {
-                alert('Gagal menyimpan whitelist: ' + res.message);
+                customAlert('Gagal menyimpan whitelist: ' + res.message, 'Gagal', 'danger');
             }
         })
         .catch(function (e) {
-            alert('Error: ' + e.message);
+            customAlert('Error: ' + e.message, 'Error', 'danger');
         });
 }
 
@@ -1091,22 +1015,22 @@ function saveAssessmentSettings() {
     var maxSpeedBonus = parseInt(document.getElementById('input-speed-bonus').value) || 0;
 
     if (timeLimitMinutes <= 0) {
-        alert('Batas waktu pengerjaan kuis harus lebih dari 0 menit.');
+        customAlert('Batas waktu pengerjaan kuis harus lebih dari 0 menit.', 'Validasi Gagal', 'warning');
         return;
     }
     if (scorePerQuestion <= 0) {
-        alert('Skor per soal harus lebih dari 0.');
+        customAlert('Skor per soal harus lebih dari 0.', 'Validasi Gagal', 'warning');
         return;
     }
     if (maxSpeedBonus < 0) {
-        alert('Max bonus kecepatan tidak boleh negatif.');
+        customAlert('Max bonus kecepatan tidak boleh negatif.', 'Validasi Gagal', 'warning');
         return;
     }
     if (autoOpenTime && autoCloseTime) {
         var openD = new Date(autoOpenTime).getTime();
         var closeD = new Date(autoCloseTime).getTime();
         if (closeD <= openD) {
-            alert('Jadwal Tutup Otomatis harus setelah Jadwal Buka Otomatis.');
+            customAlert('Jadwal Tutup Otomatis harus setelah Jadwal Buka Otomatis.', 'Validasi Gagal', 'warning');
             return;
         }
     }
@@ -1133,21 +1057,22 @@ function saveAssessmentSettings() {
         .then(function (res) { return res.json(); })
         .then(function (res) {
             if (res.success) {
-                alert('Pengaturan assessment berhasil disimpan!');
-                location.reload();
+                customAlert('Pengaturan assessment berhasil disimpan!', 'Sukses', 'success').then(function() {
+                    location.reload();
+                });
             } else {
-                alert('Gagal menyimpan assessment: ' + res.message);
+                customAlert('Gagal menyimpan pengaturan: ' + res.message, 'Gagal', 'danger');
             }
         })
         .catch(function (e) {
-            alert('Error saving settings: ' + e.message);
+            customAlert('Error saving settings: ' + e.message, 'Error', 'danger');
         });
 }
 
 function saveAdminPasswordOnly() {
     var newPassword = document.getElementById('input-new-admin-password').value.trim();
     if (!newPassword) {
-        alert('Silakan isi password baru terlebih dahulu.');
+        customAlert('Silakan isi password baru terlebih dahulu.', 'Validasi Gagal', 'warning');
         return;
     }
 
@@ -1167,16 +1092,17 @@ function saveAdminPasswordOnly() {
         .then(function (res) { return res.json(); })
         .then(function (res) {
             if (res.success) {
-                alert('Password admin berhasil diubah!');
-                adminPasswordSession = newPassword;
-                document.getElementById('input-new-admin-password').value = '';
-                location.reload();
+                customAlert('Password admin berhasil diubah!', 'Sukses', 'success').then(function() {
+                    adminPasswordSession = newPassword;
+                    document.getElementById('input-new-admin-password').value = '';
+                    location.reload();
+                });
             } else {
-                alert('Gagal mengubah password: ' + res.message);
+                customAlert('Gagal mengubah password: ' + res.message, 'Gagal', 'danger');
             }
         })
         .catch(function (e) {
-            alert('Error: ' + e.message);
+            customAlert('Error: ' + e.message, 'Error', 'danger');
         });
 }
 
@@ -1576,7 +1502,7 @@ function downloadExcelTemplate() {
         XLSX.utils.book_append_sheet(wb, ws, "Question");
         XLSX.writeFile(wb, "questions_template.xlsx");
     } catch (e) {
-        alert("Gagal mengunduh template Excel: " + e.message);
+        customAlert("Gagal mengunduh template Excel: " + e.message, "Gagal", "danger");
     }
 }
 

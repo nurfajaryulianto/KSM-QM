@@ -361,6 +361,21 @@
             style="max-width: 90%; max-height: 90%; border-radius: var(--radius-sm); box-shadow: 0 10px 30px rgba(0,0,0,0.5); object-fit: contain; cursor: zoom-out;" />
     </div>
 
+    <!-- Custom Alert/Confirm Modal Dialog -->
+    <div id="custom-modal" class="modal-overlay" style="display:none; z-index: 1200;">
+        <div class="modal-card" style="max-width: 420px; animation: modalPopUp .25s cubic-bezier(0.34, 1.56, 0.64, 1);">
+            <div class="modal-body" style="text-align: center; padding: 2rem 1.5rem;">
+                <div id="custom-modal-icon" style="font-size: 48px; margin-bottom: 1rem;">⚠️</div>
+                <h2 id="custom-modal-title" style="font-size: 18px; font-weight: 600; margin-bottom: 0.75rem; color: var(--purple-800);">Judul Notifikasi</h2>
+                <p id="custom-modal-message" style="font-size: 14px; color: var(--gray-600); line-height: 1.5; margin-bottom: 1.5rem; white-space: pre-line;">Pesan notifikasi...</p>
+                <div id="custom-modal-actions" style="display: flex; gap: 10px; justify-content: center;">
+                    <button id="custom-modal-btn-cancel" class="btn" style="flex: 1; margin: 0;">Batal</button>
+                    <button id="custom-modal-btn-confirm" class="btn btn-primary" style="flex: 1; margin: 0;">OK</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="script.js"></script>
 </body>
 
