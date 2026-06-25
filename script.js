@@ -64,10 +64,13 @@ function onConfigLoaded(cfg) {
         document.getElementById('form-open').style.display = 'none';
         document.getElementById('form-closed').style.display = 'block';
     }
-    
+
     setupClosedScreen(cfg);
     showScreen('screen-register');
+    // Attempt to resend any pending submissions from previous failures
+    processPendingSubmissions();
 }
+
 
 function updateSubDeptMeta(dept) {
     if (!config || !config.subDeptMeta || !config.subDeptMeta[dept]) return;
@@ -138,10 +141,10 @@ function initQuiz() {
     });
     secondsLeft = config.timeLimit;
     startTime = Date.now();
-    
+
     groupQuestions();
     currentSectionIdx = 0;
-    
+
     buildDots();
     renderCurrentSection();
     updateProgress();
@@ -203,11 +206,11 @@ function buildDots() {
         d.textContent = i + 1;
         d.style.cursor = 'pointer';
         d.title = 'Buka Soal ' + (i + 1);
-        d.onclick = function() {
+        d.onclick = function () {
             var targetSecIdx = -1;
             for (var sIdx = 0; sIdx < activeSections.length; sIdx++) {
                 var section = activeSections[sIdx];
-                var found = section.questions.some(function(q) {
+                var found = section.questions.some(function (q) {
                     return q.originalIndex === i;
                 });
                 if (found) {
@@ -215,15 +218,15 @@ function buildDots() {
                     break;
                 }
             }
-            
+
             if (targetSecIdx !== -1) {
                 if (currentSectionIdx !== targetSecIdx) {
                     currentSectionIdx = targetSecIdx;
                     renderCurrentSection();
                 }
-                
+
                 // Wait a tiny bit for render to complete, then scroll to the card
-                setTimeout(function() {
+                setTimeout(function () {
                     var card = document.getElementById('q-card-' + i);
                     if (card) {
                         card.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -239,36 +242,36 @@ function buildDots() {
 function renderCurrentSection() {
     var container = document.getElementById('questions-container');
     container.innerHTML = '';
-    
+
     var section = activeSections[currentSectionIdx];
     if (!section) return;
-    
+
     // Set the active highlighted dot to the first question in this section
     if (section.questions.length > 0) {
         activeQ = section.questions[0].originalIndex;
     }
-    
+
     // Render section title and description
     var secHeader = document.createElement('div');
     secHeader.className = 'section-header';
     secHeader.innerHTML = '<h2>' + section.title + '</h2><span class="text-muted">' + section.desc + '</span>';
     container.appendChild(secHeader);
-    
+
     // Render question cards for this section
     section.questions.forEach(function (q) {
         container.appendChild(renderQuestionBlock(q));
     });
-    
+
     // Render navigation buttons at the bottom
     var navRow = document.createElement('div');
     navRow.className = 'nav-row';
     navRow.style.marginTop = '2rem';
-    
+
     if (currentSectionIdx > 0) {
         var prevBtn = document.createElement('button');
         prevBtn.className = 'btn';
         prevBtn.innerHTML = '&larr; Prev Section';
-        prevBtn.onclick = function() {
+        prevBtn.onclick = function () {
             goToSection(currentSectionIdx - 1);
         };
         navRow.appendChild(prevBtn);
@@ -276,53 +279,53 @@ function renderCurrentSection() {
         var spacer = document.createElement('div');
         navRow.appendChild(spacer);
     }
-    
+
     if (currentSectionIdx < activeSections.length - 1) {
         var nextBtn = document.createElement('button');
         nextBtn.className = 'btn btn-primary';
         var nextSecTitle = activeSections[currentSectionIdx + 1].title;
         nextBtn.innerHTML = 'Next Section (' + nextSecTitle + ') &rarr;';
-        nextBtn.onclick = function() {
+        nextBtn.onclick = function () {
             goToSection(currentSectionIdx + 1);
         };
         navRow.appendChild(nextBtn);
     }
-    
+
     container.appendChild(navRow);
-    
+
     // Update dots highlights
     updateDotHighlights();
 }
 
 function renderQuestionBlock(q) {
     var origIdx = q.originalIndex;
-    
+
     var card = document.createElement('div');
     card.className = 'question-card';
     card.id = 'q-card-' + origIdx;
-    
+
     // Soal Number
     var qNum = document.createElement('div');
     qNum.className = 'q-number';
     qNum.textContent = 'QUESTION ' + (origIdx + 1);
     card.appendChild(qNum);
-    
+
     // Soal Text
     var qText = document.createElement('div');
     qText.className = 'q-text';
     qText.textContent = q.question;
     card.appendChild(qText);
-    
+
     // Soal Image
     if (q.imageUrl && q.imageUrl.trim()) {
         var img = document.createElement('img');
         img.className = 'q-image';
         img.src = q.imageUrl.trim();
         img.alt = 'Soal Gambar';
-        img.onclick = function() { openImageZoom(img.src); };
+        img.onclick = function () { openImageZoom(img.src); };
         card.appendChild(img);
     }
-    
+
     // Options or Essay
     if (q.type === 'essay') {
         var essayWrap = document.createElement('div');
@@ -330,10 +333,10 @@ function renderQuestionBlock(q) {
         textarea.className = 'textarea-input';
         textarea.placeholder = 'Ketik jawaban essay Anda di sini...';
         textarea.value = answers[origIdx] || '';
-        textarea.oninput = function() {
+        textarea.oninput = function () {
             saveEssayAnswerAt(origIdx, this.value);
         };
-        textarea.onfocus = function() {
+        textarea.onfocus = function () {
             highlightDot(origIdx);
         };
         essayWrap.appendChild(textarea);
@@ -341,7 +344,7 @@ function renderQuestionBlock(q) {
     } else {
         var optionsDiv = document.createElement('div');
         optionsDiv.className = 'options';
-        
+
         q.options.forEach(function (opt, optIdx) {
             var div = document.createElement('div');
             div.className = 'option' + (answers[origIdx] === optIdx ? ' selected' : '');
@@ -349,7 +352,7 @@ function renderQuestionBlock(q) {
             div.innerHTML =
                 '<div class="option-letter">' + LETTERS[optIdx] + '</div>' +
                 '<span>' + escHtml(opt) + '</span>';
-                
+
             div.onclick = function () {
                 selectAnswerAt(origIdx, optIdx);
             };
@@ -357,16 +360,16 @@ function renderQuestionBlock(q) {
         });
         card.appendChild(optionsDiv);
     }
-    
+
     return card;
 }
 
 function selectAnswerAt(origIdx, optIdx) {
     answers[origIdx] = optIdx;
-    
+
     // Update visual selected states
     var q = config.questions[origIdx];
-    q.options.forEach(function(_, oIdx) {
+    q.options.forEach(function (_, oIdx) {
         var el = document.getElementById('opt-' + origIdx + '-' + oIdx);
         if (el) {
             if (oIdx === optIdx) {
@@ -376,7 +379,7 @@ function selectAnswerAt(origIdx, optIdx) {
             }
         }
     });
-    
+
     updateProgress();
     highlightDot(origIdx);
 }
@@ -395,7 +398,7 @@ function goToSection(idx) {
     if (idx >= 0 && idx < activeSections.length) {
         currentSectionIdx = idx;
         renderCurrentSection();
-        
+
         // Scroll to the top of the card
         var el = document.getElementById('screen-quiz');
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -406,14 +409,14 @@ function updateDotHighlights() {
     config.questions.forEach(function (qItem, i) {
         var d = document.getElementById('dot-' + i);
         if (!d) return;
-        
+
         var isAnswered = false;
         if (qItem.type === 'essay') {
             isAnswered = !!(answers[i] && answers[i].trim());
         } else {
             isAnswered = (answers[i] !== -1);
         }
-        
+
         var isCurrent = (i === activeQ);
         d.className = 'q-dot' + (isCurrent ? ' current' : '') + (isAnswered ? ' answered' : '');
     });
@@ -421,15 +424,15 @@ function updateDotHighlights() {
 
 function updateProgress() {
     var n = config.questions.length;
-    
+
     updateDotHighlights();
-    
+
     var unanswered = answers.filter(function (a, i) {
         var qItem = config.questions[i];
         if (qItem.type === 'essay') return !a.trim();
         return a === -1;
     }).length;
-    
+
     document.getElementById('progress-lbl').textContent = (n - unanswered) + ' / ' + n + ' answered';
 }
 
@@ -473,39 +476,316 @@ function updateTimerDisplay() {
 }
 
 // ---- Submit ----
+// ---- Submit ----
 function submitNow() {
     clearInterval(timerInterval);
     var timeTaken = Math.floor((Date.now() - startTime) / 1000);
 
-    showScreen('screen-loading');
-    document.getElementById('screen-loading').innerHTML =
-        '<div class="loading"><div class="spin" style="font-size:28px">⟳</div><p style="margin-top:1rem">Mengirimkan jawaban Anda...</p></div>';
-
+    // Prepare payload with a unique requestId for idempotency
+    var requestId = generateRequestId();
     var payload = {
         nik: myNik,
         name: myName,
         subDept: mySubDept,
         answers: answers,
-        timeTaken: timeTaken
+        timeTaken: timeTaken,
+        requestId: requestId // extra field, ignored by old GAS if not used
     };
+
+    // Store pending submission locally (will be cleared on success)
+    addPendingSubmission(payload);
+
+    showScreen('screen-loading');
+    document.getElementById('screen-loading').innerHTML =
+        '<div class="loading"><div class="spin" style="font-size:28px">⟳</div><p style="margin-top:1rem">Mengirimkan jawaban Anda...</p></div>';
 
     fetch(GAS_URL, {
         method: 'POST',
-        headers: {
-            'Content-Type': 'text/plain' // Using text/plain to avoid preflight CORS request complexity
-        },
+        headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
     })
+        .then(function (res) { return res.json(); })
         .then(function (res) {
-            return res.json();
+            // On success, remove this request from pending list
+            removePendingSubmission(requestId);
+            onSubmitResult(res);
         })
-        .then(onSubmitResult)
         .catch(function (e) {
             alert('Pengiriman gagal: ' + e.message + '\nSilakan coba lagi.');
             showScreen('screen-quiz');
             startTimer();
+            // Keep the payload in pending storage for later retry
         });
 }
+
+// Utility: generate a UUID request identifier (uses Web Crypto API when available)
+function generateRequestId() {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+    }
+    // Fallback: simple random hex string
+    return 'req_' + Math.random().toString(16).slice(2) + Date.now();
+}
+
+// LocalStorage helpers for pending submissions (array of payload objects)
+const PENDING_KEY = 'pendingSubmissions';
+function getPendingSubmissions() {
+    var raw = localStorage.getItem(PENDING_KEY);
+    return raw ? JSON.parse(raw) : [];
+}
+function setPendingSubmissions(arr) {
+    localStorage.setItem(PENDING_KEY, JSON.stringify(arr));
+}
+function addPendingSubmission(item) {
+    var list = getPendingSubmissions();
+    list.push(item);
+    setPendingSubmissions(list);
+}
+function removePendingSubmission(requestId) {
+    var list = getPendingSubmissions();
+    list = list.filter(function (it) { return it.requestId !== requestId; });
+    setPendingSubmissions(list);
+}
+
+// Process any pending submissions stored from previous attempts.
+function processPendingSubmissions() {
+    var pending = getPendingSubmissions();
+    if (!pending.length) return;
+
+    // Attempt each pending payload sequentially.
+    pending.forEach(function (payload) {
+        // Skip if already sent (should have been removed on success)
+        fetch(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: JSON.stringify(payload)
+        })
+            .then(function (res) { return res.json(); })
+            .then(function (res) {
+                if (res.success) {
+                    removePendingSubmission(payload.requestId);
+                }
+                // If not successful, keep it for future retry.
+            })
+            .catch(function () {
+                // Network error – keep the payload.
+            });
+    });
+}
+
+// ---- Helpers ----
+function showScreen(id) {
+    document.querySelectorAll('.screen').forEach(function (s) { s.classList.remove('active'); });
+    document.getElementById(id).classList.add('active');
+}
+
+function formatTime(s) {
+    var m = Math.floor(s / 60);
+    var sec = s % 60;
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+}
+
+function showError(el, msg) {
+    el.textContent = msg;
+    el.style.display = 'block';
+}
+
+function escHtml(str) {
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+// ---- Admin Panel Logic ----
+var adminPasswordSession = '';
+
+function showAdminSubView(viewId) {
+    document.getElementById('admin-menu-select').style.display = 'none';
+    document.getElementById('admin-participants-view').style.display = 'none';
+    document.getElementById('admin-assessment-view').style.display = 'none';
+    document.getElementById(viewId).style.display = 'block';
+}
+
+function openAdminModal() {
+    document.getElementById('modal-admin').style.display = 'flex';
+    document.getElementById('admin-login-view').style.display = 'block';
+    document.getElementById('admin-dashboard-view').style.display = 'none';
+    document.getElementById('input-admin-password').value = '';
+    document.getElementById('admin-login-error').style.display = 'none';
+}
+
+function closeAdminModal() {
+    document.getElementById('modal-admin').style.display = 'none';
+}
+
+function loginAdmin() {
+    var password = document.getElementById('input-admin-password').value;
+    var errEl = document.getElementById('admin-login-error');
+    errEl.style.display = 'none';
+
+    if (!password) { showError(errEl, 'Password cannot be empty.'); return; }
+
+    // Call GAS verifyAdmin
+    fetch(GAS_URL + '?action=verifyAdmin&password=' + encodeURIComponent(password))
+        .then(function (res) { return res.json(); })
+        .then(function (res) {
+            if (res.success) {
+                adminPasswordSession = password;
+                document.getElementById('admin-login-view').style.display = 'none';
+                document.getElementById('admin-dashboard-view').style.display = 'block';
+                showAdminSubView('admin-menu-select');
+
+                // Load current configs to form
+                document.getElementById('check-assessment-open').checked = !!config.isOpen;
+                document.getElementById('check-enforce-whitelist').checked = !!config.enforceWhitelist;
+                document.getElementById('input-assessment-title').value = config.title || '';
+                document.getElementById('input-new-admin-password').value = '';
+
+                document.getElementById('input-auto-open').value = formatDateTimeLocal(config.autoOpenTime);
+                document.getElementById('input-auto-close').value = formatDateTimeLocal(config.autoCloseTime);
+                document.getElementById('input-time-limit').value = config.timeLimitMinutes || 10;
+                document.getElementById('input-score-per-q').value = config.scorePerQuestion || 10;
+                document.getElementById('input-speed-bonus').value = config.maxSpeedBonus || 20;
+
+                document.getElementById('questions-upload-status').style.display = 'none';
+                document.getElementById('participants-upload-status').style.display = 'none';
+                document.getElementById('file-questions-excel').value = '';
+                document.getElementById('textarea-participants').value = '';
+            } else {
+                showError(errEl, res.message || 'Incorrect password.');
+            }
+        })
+        .catch(function (e) {
+            showError(errEl, 'Connection error: ' + e.message);
+        });
+}
+
+function saveParticipantSettings() {
+    var enforceWhitelist = document.getElementById('check-enforce-whitelist').checked;
+
+    var payload = {
+        action: 'updateConfig',
+        password: adminPasswordSession,
+        config: {
+            enforceWhitelist: enforceWhitelist
+        }
+    };
+
+    fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+    })
+        .then(function (res) { return res.json(); })
+        .then(function (res) {
+            if (res.success) {
+                alert('Pengaturan whitelist berhasil disimpan!');
+                location.reload();
+            } else {
+                alert('Gagal menyimpan whitelist: ' + res.message);
+            }
+        })
+        .catch(function (e) {
+            alert('Error: ' + e.message);
+        });
+}
+
+function saveAssessmentSettings() {
+    var isOpen = document.getElementById('check-assessment-open').checked;
+    var title = document.getElementById('input-assessment-title').value.trim();
+    var autoOpenTime = document.getElementById('input-auto-open').value;
+    var autoCloseTime = document.getElementById('input-auto-close').value;
+    var timeLimitMinutes = parseInt(document.getElementById('input-time-limit').value) || 10;
+    var scorePerQuestion = parseInt(document.getElementById('input-score-per-q').value) || 10;
+    var maxSpeedBonus = parseInt(document.getElementById('input-speed-bonus').value) || 0;
+
+    if (timeLimitMinutes <= 0) {
+        alert('Batas waktu pengerjaan kuis harus lebih dari 0 menit.');
+        return;
+    }
+    if (scorePerQuestion <= 0) {
+        alert('Skor per soal harus lebih dari 0.');
+        return;
+    }
+    if (maxSpeedBonus < 0) {
+        alert('Max bonus kecepatan tidak boleh negatif.');
+        return;
+    }
+    if (autoOpenTime && autoCloseTime) {
+        var openD = new Date(autoOpenTime).getTime();
+        var closeD = new Date(autoCloseTime).getTime();
+        if (closeD <= openD) {
+            alert('Jadwal Tutup Otomatis harus setelah Jadwal Buka Otomatis.');
+            return;
+        }
+    }
+
+    var payload = {
+        action: 'updateConfig',
+        password: adminPasswordSession,
+        config: {
+            isOpen: isOpen,
+            title: title,
+            autoOpenTime: autoOpenTime,
+            autoCloseTime: autoCloseTime,
+            timeLimitMinutes: timeLimitMinutes,
+            scorePerQuestion: scorePerQuestion,
+            maxSpeedBonus: maxSpeedBonus
+        }
+    };
+
+    fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify(payload)
+    })
+        .then(function (res) { return res.json(); })
+        .then(function (res) {
+            if (res.success) {
+                alert('Pengaturan assessment berhasil disimpan!');
+                location.reload();
+            } else {
+                alert('Gagal menyimpan: ' + res.message);
+            }
+        })
+        .catch(function (e) {
+            alert('Error: ' + e.message);
+        });
+}
+
+clearInterval(timerInterval);
+var timeTaken = Math.floor((Date.now() - startTime) / 1000);
+
+showScreen('screen-loading');
+document.getElementById('screen-loading').innerHTML =
+    '<div class="loading"><div class="spin" style="font-size:28px">⟳</div><p style="margin-top:1rem">Mengirimkan jawaban Anda...</p></div>';
+
+var payload = {
+    nik: myNik,
+    name: myName,
+    subDept: mySubDept,
+    answers: answers,
+    timeTaken: timeTaken
+};
+
+fetch(GAS_URL, {
+    method: 'POST',
+    headers: {
+        'Content-Type': 'text/plain' // Using text/plain to avoid preflight CORS request complexity
+    },
+    body: JSON.stringify(payload)
+})
+    .then(function (res) {
+        return res.json();
+    })
+    .then(onSubmitResult)
+    .catch(function (e) {
+        alert('Pengiriman gagal: ' + e.message + '\nSilakan coba lagi.');
+        showScreen('screen-quiz');
+        startTimer();
+    });
+
 
 function onSubmitResult(res) {
     if (!res.success) {
@@ -677,31 +957,31 @@ function loginAdmin() {
     var password = document.getElementById('input-admin-password').value;
     var errEl = document.getElementById('admin-login-error');
     errEl.style.display = 'none';
-    
+
     if (!password) { showError(errEl, 'Password cannot be empty.'); return; }
-    
+
     // Call GAS verifyAdmin
     fetch(GAS_URL + '?action=verifyAdmin&password=' + encodeURIComponent(password))
-        .then(function(res) { return res.json(); })
-        .then(function(res) {
+        .then(function (res) { return res.json(); })
+        .then(function (res) {
             if (res.success) {
                 adminPasswordSession = password;
                 document.getElementById('admin-login-view').style.display = 'none';
                 document.getElementById('admin-dashboard-view').style.display = 'block';
                 showAdminSubView('admin-menu-select');
-                
+
                 // Load current configs to form
                 document.getElementById('check-assessment-open').checked = !!config.isOpen;
                 document.getElementById('check-enforce-whitelist').checked = !!config.enforceWhitelist;
                 document.getElementById('input-assessment-title').value = config.title || '';
                 document.getElementById('input-new-admin-password').value = '';
-                
+
                 document.getElementById('input-auto-open').value = formatDateTimeLocal(config.autoOpenTime);
                 document.getElementById('input-auto-close').value = formatDateTimeLocal(config.autoCloseTime);
                 document.getElementById('input-time-limit').value = config.timeLimitMinutes || 10;
                 document.getElementById('input-score-per-q').value = config.scorePerQuestion || 10;
                 document.getElementById('input-speed-bonus').value = config.maxSpeedBonus || 20;
-                
+
                 document.getElementById('questions-upload-status').style.display = 'none';
                 document.getElementById('participants-upload-status').style.display = 'none';
                 document.getElementById('file-questions-excel').value = '';
@@ -710,14 +990,14 @@ function loginAdmin() {
                 showError(errEl, res.message || 'Incorrect password.');
             }
         })
-        .catch(function(e) {
+        .catch(function (e) {
             showError(errEl, 'Connection error: ' + e.message);
         });
 }
 
 function saveParticipantSettings() {
     var enforceWhitelist = document.getElementById('check-enforce-whitelist').checked;
-    
+
     var payload = {
         action: 'updateConfig',
         password: adminPasswordSession,
@@ -725,26 +1005,26 @@ function saveParticipantSettings() {
             enforceWhitelist: enforceWhitelist
         }
     };
-    
+
     fetch(GAS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
     })
-    .then(function(res) { return res.json(); })
-    .then(function(res) {
-        if (res.success) {
-            alert('Pengaturan whitelist berhasil disimpan!');
-            // Update local config value so the form updates without full reload if we just switch sub-views, 
-            // but reload is fine too since it refreshes all states. Let's do reload.
-            location.reload();
-        } else {
-            alert('Gagal menyimpan whitelist: ' + res.message);
-        }
-    })
-    .catch(function(e) {
-        alert('Error: ' + e.message);
-    });
+        .then(function (res) { return res.json(); })
+        .then(function (res) {
+            if (res.success) {
+                alert('Pengaturan whitelist berhasil disimpan!');
+                // Update local config value so the form updates without full reload if we just switch sub-views, 
+                // but reload is fine too since it refreshes all states. Let's do reload.
+                location.reload();
+            } else {
+                alert('Gagal menyimpan whitelist: ' + res.message);
+            }
+        })
+        .catch(function (e) {
+            alert('Error: ' + e.message);
+        });
 }
 
 function saveAssessmentSettings() {
@@ -790,24 +1070,24 @@ function saveAssessmentSettings() {
             maxSpeedBonus: maxSpeedBonus
         }
     };
-    
+
     fetch(GAS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
     })
-    .then(function(res) { return res.json(); })
-    .then(function(res) {
-        if (res.success) {
-            alert('Pengaturan assessment berhasil disimpan!');
-            location.reload();
-        } else {
-            alert('Gagal menyimpan assessment: ' + res.message);
-        }
-    })
-    .catch(function(e) {
-        alert('Error saving settings: ' + e.message);
-    });
+        .then(function (res) { return res.json(); })
+        .then(function (res) {
+            if (res.success) {
+                alert('Pengaturan assessment berhasil disimpan!');
+                location.reload();
+            } else {
+                alert('Gagal menyimpan assessment: ' + res.message);
+            }
+        })
+        .catch(function (e) {
+            alert('Error saving settings: ' + e.message);
+        });
 }
 
 function saveAdminPasswordOnly() {
@@ -816,7 +1096,7 @@ function saveAdminPasswordOnly() {
         alert('Silakan isi password baru terlebih dahulu.');
         return;
     }
-    
+
     var payload = {
         action: 'updateConfig',
         password: adminPasswordSession,
@@ -824,65 +1104,65 @@ function saveAdminPasswordOnly() {
             adminPassword: newPassword
         }
     };
-    
+
     fetch(GAS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
     })
-    .then(function(res) { return res.json(); })
-    .then(function(res) {
-        if (res.success) {
-            alert('Password admin berhasil diubah!');
-            adminPasswordSession = newPassword;
-            document.getElementById('input-new-admin-password').value = '';
-            location.reload();
-        } else {
-            alert('Gagal mengubah password: ' + res.message);
-        }
-    })
-    .catch(function(e) {
-        alert('Error: ' + e.message);
-    });
+        .then(function (res) { return res.json(); })
+        .then(function (res) {
+            if (res.success) {
+                alert('Password admin berhasil diubah!');
+                adminPasswordSession = newPassword;
+                document.getElementById('input-new-admin-password').value = '';
+                location.reload();
+            } else {
+                alert('Gagal mengubah password: ' + res.message);
+            }
+        })
+        .catch(function (e) {
+            alert('Error: ' + e.message);
+        });
 }
 
 function handleQuestionsUpload() {
     var fileInput = document.getElementById('file-questions-excel');
     var statusEl = document.getElementById('questions-upload-status');
-    
+
     if (fileInput.files.length === 0) {
         statusEl.textContent = 'Please select an Excel file first.';
         statusEl.className = 'error-msg';
         statusEl.style.display = 'block';
         return;
     }
-    
+
     statusEl.textContent = 'Reading excel file...';
     statusEl.className = 'text-muted';
     statusEl.style.display = 'block';
-    
+
     var file = fileInput.files[0];
     var reader = new FileReader();
-    reader.onload = function(e) {
+    reader.onload = function (e) {
         try {
             var data = new Uint8Array(e.target.result);
             var workbook = XLSX.read(data, { type: 'array' });
-            
+
             var payloadData = [];
-            
-            workbook.SheetNames.forEach(function(sheetName) {
+
+            workbook.SheetNames.forEach(function (sheetName) {
                 var worksheet = workbook.Sheets[sheetName];
                 var rawJson = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
-                
+
                 if (rawJson.length === 0) return;
-                
+
                 var questions = [];
-                rawJson.forEach(function(row) {
+                rawJson.forEach(function (row) {
                     var questionText = row['Title'] || row['Question'] || '';
                     if (!questionText) return;
-                    
+
                     var diffLevel = row['Difficulty Level'] || row['Difficulty'] || 1;
-                    
+
                     var typeVal = String(row['Type Questions (Multiple Choice, Essay, Binary)'] || row['Type'] || '').toLowerCase();
                     var type = 'mc';
                     if (typeVal.indexOf('essay') !== -1) {
@@ -890,18 +1170,18 @@ function handleQuestionsUpload() {
                     } else if (typeVal.indexOf('binary') !== -1 || typeVal.indexOf('bin') !== -1) {
                         type = 'binary';
                     }
-                    
+
                     var options = [];
                     var choiceLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
-                    choiceLetters.forEach(function(letter) {
+                    choiceLetters.forEach(function (letter) {
                         if (row[letter] !== undefined && row[letter] !== null && String(row[letter]).trim() !== '') {
                             options.push(String(row[letter]).trim());
                         }
                     });
-                    
+
                     var answerVal = String(row['Answer'] || '').trim();
                     var answer = 0;
-                    
+
                     if (type === 'binary') {
                         var lowerAns = answerVal.toLowerCase();
                         if (lowerAns === 'ya' || lowerAns === 'benar' || lowerAns === 'a' || lowerAns === '0' || lowerAns === 'true' || lowerAns === 'yes') {
@@ -920,12 +1200,12 @@ function handleQuestionsUpload() {
                     } else {
                         answer = answerVal;
                     }
-                    
+
                     var keywords = [];
                     if (row['Keywords']) {
-                        keywords = String(row['Keywords']).split(',').map(function(k) { return k.trim(); }).filter(Boolean);
+                        keywords = String(row['Keywords']).split(',').map(function (k) { return k.trim(); }).filter(Boolean);
                     }
-                    
+
                     var imageUrl = String(row['Image URL'] || row['Image'] || '').trim();
 
                     questions.push({
@@ -939,7 +1219,7 @@ function handleQuestionsUpload() {
                         imageUrl: imageUrl
                     });
                 });
-                
+
                 if (questions.length > 0) {
                     payloadData.push({
                         subDept: sheetName,
@@ -947,43 +1227,43 @@ function handleQuestionsUpload() {
                     });
                 }
             });
-            
+
             if (payloadData.length === 0) {
                 statusEl.textContent = 'No questions found in Excel sheets.';
                 statusEl.className = 'error-msg';
                 return;
             }
-            
+
             statusEl.textContent = 'Uploading ' + payloadData.length + ' sub-departments to server...';
-            
+
             var payload = {
                 action: 'importQuestions',
                 password: adminPasswordSession,
                 data: payloadData
             };
-            
+
             fetch(GAS_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'text/plain' },
                 body: JSON.stringify(payload)
             })
-            .then(function(res) { return res.json(); })
-            .then(function(res) {
-                if (res.success) {
-                    statusEl.textContent = '✅ Questions imported successfully!';
-                    statusEl.style.color = '#3b6d11';
-                    fileInput.value = '';
-                } else {
-                    statusEl.textContent = '❌ Upload failed: ' + res.message;
+                .then(function (res) { return res.json(); })
+                .then(function (res) {
+                    if (res.success) {
+                        statusEl.textContent = '✅ Questions imported successfully!';
+                        statusEl.style.color = '#3b6d11';
+                        fileInput.value = '';
+                    } else {
+                        statusEl.textContent = '❌ Upload failed: ' + res.message;
+                        statusEl.className = 'error-msg';
+                    }
+                })
+                .catch(function (e) {
+                    statusEl.textContent = '❌ Network error: ' + e.message;
                     statusEl.className = 'error-msg';
-                }
-            })
-            .catch(function(e) {
-                statusEl.textContent = '❌ Network error: ' + e.message;
-                statusEl.className = 'error-msg';
-            });
-            
-        } catch(err) {
+                });
+
+        } catch (err) {
             statusEl.textContent = '❌ Failed to parse excel: ' + err.message;
             statusEl.className = 'error-msg';
         }
@@ -994,7 +1274,7 @@ function handleQuestionsUpload() {
 function handleParticipantsUpload() {
     var txtArea = document.getElementById('textarea-participants');
     var statusEl = document.getElementById('participants-upload-status');
-    
+
     var rawText = txtArea.value.trim();
     if (!rawText) {
         statusEl.textContent = 'Please paste participant data first.';
@@ -1002,25 +1282,25 @@ function handleParticipantsUpload() {
         statusEl.style.display = 'block';
         return;
     }
-    
+
     statusEl.textContent = 'Uploading participant whitelist...';
     statusEl.className = 'text-muted';
     statusEl.style.display = 'block';
-    
+
     var lines = rawText.split('\n');
     var participants = [];
-    
+
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i].trim();
         if (!line) continue;
-        
+
         var parts = [];
         if (line.indexOf(',') !== -1) {
             parts = line.split(',');
         } else {
             parts = line.split('\t');
         }
-        
+
         if (parts.length >= 2) {
             var nik = parts[0].trim();
             var name = parts.slice(1).join(',').trim();
@@ -1029,41 +1309,41 @@ function handleParticipantsUpload() {
             }
         }
     }
-    
+
     if (participants.length === 0) {
         statusEl.textContent = '❌ Invalid format. Please use: NIK, Name (e.g. 12345, John Doe)';
         statusEl.className = 'error-msg';
         return;
     }
-    
+
     statusEl.textContent = 'Uploading ' + participants.length + ' participants...';
-    
+
     var payload = {
         action: 'importParticipants',
         password: adminPasswordSession,
         participants: participants
     };
-    
+
     fetch(GAS_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain' },
         body: JSON.stringify(payload)
     })
-    .then(function(res) { return res.json(); })
-    .then(function(res) {
-        if (res.success) {
-            statusEl.textContent = '✅ Successfully imported ' + participants.length + ' participants!';
-            statusEl.style.color = '#3b6d11';
-            txtArea.value = '';
-        } else {
-            statusEl.textContent = '❌ Upload failed: ' + res.message;
+        .then(function (res) { return res.json(); })
+        .then(function (res) {
+            if (res.success) {
+                statusEl.textContent = '✅ Successfully imported ' + participants.length + ' participants!';
+                statusEl.style.color = '#3b6d11';
+                txtArea.value = '';
+            } else {
+                statusEl.textContent = '❌ Upload failed: ' + res.message;
+                statusEl.className = 'error-msg';
+            }
+        })
+        .catch(function (e) {
+            statusEl.textContent = '❌ Network error: ' + e.message;
             statusEl.className = 'error-msg';
-        }
-    })
-    .catch(function(e) {
-        statusEl.textContent = '❌ Network error: ' + e.message;
-        statusEl.className = 'error-msg';
-    });
+        });
 }
 
 // ---- Auto Scheduling & Formatting helpers ----
@@ -1075,32 +1355,32 @@ function setupClosedScreen(cfg) {
         clearInterval(closedCountdownInterval);
         closedCountdownInterval = null;
     }
-    
+
     if (cfg.isOpen) {
         infoEl.style.display = 'none';
         return;
     }
-    
+
     if (cfg.autoOpenTime) {
         var openTime = new Date(cfg.autoOpenTime).getTime();
         var closeTime = cfg.autoCloseTime ? new Date(cfg.autoCloseTime).getTime() : null;
         var now = Date.now();
-        
+
         if (!isNaN(openTime) && openTime > now) {
             infoEl.style.display = 'block';
-            
+
             function updateCountdown() {
                 var current = Date.now();
                 var diff = openTime - current;
                 if (diff <= 0) {
                     clearInterval(closedCountdownInterval);
                     infoEl.innerHTML = "🕒 Assessment is opening... Please refresh the page.";
-                    setTimeout(function() {
+                    setTimeout(function () {
                         location.reload();
                     }, 2000);
                     return;
                 }
-                
+
                 var secs = Math.floor(diff / 1000);
                 var days = Math.floor(secs / (24 * 3600));
                 secs %= (24 * 3600);
@@ -1108,15 +1388,15 @@ function setupClosedScreen(cfg) {
                 secs %= 3600;
                 var mins = Math.floor(secs / 60);
                 secs %= 60;
-                
+
                 var timeStr = "";
                 if (days > 0) timeStr += days + "d ";
                 if (hours > 0 || days > 0) timeStr += hours + "h ";
                 timeStr += mins + "m " + secs + "s";
-                
+
                 infoEl.innerHTML = '🕒 Opens in: <strong>' + timeStr + '</strong><br><span style="font-size: 11px; opacity: 0.85;">Scheduled: ' + formatDateTimeString(cfg.autoOpenTime) + '</span>';
             }
-            
+
             updateCountdown();
             closedCountdownInterval = setInterval(updateCountdown, 1000);
         } else if (!isNaN(openTime) && closeTime && !isNaN(closeTime) && now > closeTime) {
@@ -1153,7 +1433,7 @@ function formatDateTimeString(str) {
         if (hour < 10) hour = '0' + hour;
         if (min < 10) min = '0' + min;
         return day + ' ' + month + ' ' + year + ', ' + hour + ':' + min;
-    } catch(e) {
+    } catch (e) {
         return str;
     }
 }
@@ -1173,7 +1453,7 @@ function formatDateTimeLocal(str) {
         if (hour < 10) hour = '0' + hour;
         if (min < 10) min = '0' + min;
         return year + '-' + month + '-' + day + 'T' + hour + ':' + min;
-    } catch(e) {
+    } catch (e) {
         return '';
     }
 }
@@ -1191,15 +1471,15 @@ function closeImageZoom() {
 
 function downloadExcelTemplate() {
     var headers = [
-        "Title", 
-        "Difficulty Level", 
-        "Type Questions (Multiple Choice, Essay, Binary)", 
-        "Answer", 
-        "Keywords", 
+        "Title",
+        "Difficulty Level",
+        "Type Questions (Multiple Choice, Essay, Binary)",
+        "Answer",
+        "Keywords",
         "Image URL",
         "A", "B", "C", "D", "E"
     ];
-    
+
     var sampleRows = [
         {
             "Title": "Siapa pendiri organisasi PMI (Palang Merah Indonesia)?",
@@ -1241,7 +1521,7 @@ function downloadExcelTemplate() {
         var wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Question");
         XLSX.writeFile(wb, "questions_template.xlsx");
-    } catch(e) {
+    } catch (e) {
         alert("Gagal mengunduh template Excel: " + e.message);
     }
 }
