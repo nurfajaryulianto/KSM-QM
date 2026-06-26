@@ -23,7 +23,7 @@ var GAS_URL = 'https://script.google.com/macros/s/AKfycbzLpAY6b3TIh5zfrxN1FHV2ka
 //    agar key tidak terekspos di frontend
 // ─────────────────────────────────────────────────────────────
 var SUPABASE_URL = 'https://zbdynfmrxhnxzktztniy.supabase.co';
-var SUPABASE_ANON_KEY = 'GANTI_DENGAN_ANON_KEY_BUKAN_SERVICE_ROLE'; // ← wajib diganti!
+var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiZHluZm1yeGhueHprdHp0bml5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIzNzMyNzksImV4cCI6MjA5Nzk0OTI3OX0.GZSgqD4ZHnDHiPAMsd_0TDCtDUniUR86lQl1aSWU5wA'; // ← wajib diganti!
 
 var config = null;
 var currentQ = 0;
