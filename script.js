@@ -423,12 +423,7 @@ function renderQuestionBlock(q) {
     card.className = 'question-card' + (isNonScoring ? ' non-scoring-card' : '');
     card.id = 'q-card-' + origIdx;
 
-    if (isNonScoring) {
-        var nsBadge = document.createElement('div');
-        nsBadge.className = 'badge-non-scoring';
-        nsBadge.textContent = '⚪ Tidak Dinilai';
-        card.appendChild(nsBadge);
-    }
+
 
     var qNum = document.createElement('div');
     qNum.className = 'q-number';
