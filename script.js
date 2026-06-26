@@ -441,13 +441,20 @@ function renderQuestionBlock(q) {
     card.appendChild(qText);
 
     if (q.imageUrl && q.imageUrl.trim()) {
-        // [SECURITY 6] Validasi URL gambar — hanya https
-        var imgSrc = q.imageUrl.trim();
-        if (imgSrc.indexOf('https://') === 0) {
+        // [SECURITY 6] Validasi URL gambar — hanya https, auto-convert Google Drive URL
+        var imgSrc = convertToDirectImageUrl(q.imageUrl.trim());
+        if (imgSrc && imgSrc.indexOf('https://') === 0) {
             var img = document.createElement('img');
             img.className = 'q-image';
             img.src = imgSrc;
             img.alt = 'Soal Gambar';
+            img.onerror = function () {
+                // Jika gambar gagal dimuat, tampilkan pesan error kecil
+                var errNote = document.createElement('p');
+                errNote.style.cssText = 'font-size:12px;color:#a32d2d;margin-bottom:0.75rem;';
+                errNote.textContent = '⚠️ Gambar tidak dapat dimuat. Pastikan link gambar bisa diakses publik.';
+                img.replaceWith(errNote);
+            };
             img.onclick = function () { openImageZoom(img.src); };
             card.appendChild(img);
         }
@@ -1447,6 +1454,35 @@ function escHtml(str) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
+}
+
+/**
+ * Konversi berbagai format URL Google Drive menjadi URL gambar langsung.
+ *
+ * Format yang didukung:
+ *  1. https://drive.google.com/file/d/FILE_ID/view
+ *  2. https://drive.google.com/open?id=FILE_ID
+ *  3. https://drive.google.com/uc?id=FILE_ID   (sudah benar, tetap dipakai)
+ *  4. https://drive.google.com/thumbnail?id=FILE_ID
+ *  5. URL non-Drive lainnya dikembalikan apa adanya.
+ *
+ * Output: https://drive.google.com/uc?export=view&id=FILE_ID
+ */
+function convertToDirectImageUrl(url) {
+    if (!url) return url;
+
+    // Pola: /file/d/FILE_ID/...
+    var m1 = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (m1) return 'https://drive.google.com/uc?export=view&id=' + m1[1];
+
+    // Pola: ?id=FILE_ID atau &id=FILE_ID
+    var m2 = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (m2 && url.indexOf('drive.google.com') !== -1) {
+        return 'https://drive.google.com/uc?export=view&id=' + m2[1];
+    }
+
+    // Bukan URL Drive — kembalikan apa adanya (misalnya https://picsum.photos/...)
+    return url;
 }
 
 function initAdminToggle() {
