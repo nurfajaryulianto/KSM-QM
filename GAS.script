@@ -367,13 +367,20 @@ function getQuestionsFromSheet(subDept) {
     var difficulty = diffIdx !== undefined ? Number(row[diffIdx]) : 1;
     var imageUrl   = imgIdx  !== undefined ? String(row[imgIdx]).trim() : '';
 
+    // Normalisasi tipe soal — template pakai "Multiple Choice", sistem pakai 'mc'
     var rawType = typeIdx !== undefined ? String(row[typeIdx]).toLowerCase().trim() : '';
-    var type    = 'mc';
+    var type    = 'mc'; // default
     if (rawType.indexOf('essay') !== -1) {
       type = 'essay';
-    } else if (rawType.indexOf('binary') !== -1 || rawType.indexOf('bin') !== -1 || rawType === 'binary') {
+    } else if (
+      rawType.indexOf('binary') !== -1 ||
+      rawType.indexOf('bin')    !== -1 ||
+      rawType === 'benar/salah'         ||
+      rawType === 'true/false'
+    ) {
       type = 'binary';
     }
+    // 'multiple choice', 'mc', 'pilihan ganda' semua → 'mc' (sudah default)
 
     var rawAns = ansIdx !== undefined ? String(row[ansIdx]).trim() : '';
     var answer = 0;
@@ -585,16 +592,28 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
         (isScoring ? (' (' + (isCorrect ? '✓' : '✗') + ')') : ' [NS]');
 
     } else {
-      var userNum = parseInt(userAnswer, 10);
-      isCorrect   = (!isNaN(userNum) && userNum === q.answer);
-      var letter  = (userNum >= 0 && userNum < LETTERS.length) ? LETTERS[userNum] : String(userAnswer);
-      var correct = (q.answer >= 0 && q.answer < LETTERS.length) ? LETTERS[q.answer] : String(q.answer);
+      var userNum    = parseInt(userAnswer, 10);
+      isCorrect      = (!isNaN(userNum) && userNum === q.answer);
+
+      // Tampilkan teks opsi yang dipilih user (bukan huruf/indeks)
+      var options    = q.options || [];
+      var selectedText = (userNum >= 0 && userNum < options.length)
+                         ? options[userNum]
+                         : (userNum === -1 ? '(tidak dijawab)' : String(userAnswer));
+      var correctText  = (q.answer >= 0 && q.answer < options.length)
+                         ? options[q.answer]
+                         : String(q.answer);
+
       if (isScoring) {
         if (q.type === 'mc')     { if (isCorrect) mcCorrect++;     }
         if (q.type === 'binary') { if (isCorrect) binaryCorrect++; }
       }
-      answersDetail['Q' + q.id] = letter +
-        (isScoring ? (' (' + (isCorrect ? '✓' : '✗ ' + correct) + ')') : ' [NS]');
+
+      // Format: "Angsa (✓)" jika benar, "Bebek (✗ Angsa)" jika salah
+      answersDetail['Q' + q.id] = selectedText +
+        (isScoring
+          ? (' (' + (isCorrect ? '✓' : '✗ ' + correctText) + ')')
+          : ' [NS]');
     }
 
     if (isScoring && isCorrect) correctCount++;
