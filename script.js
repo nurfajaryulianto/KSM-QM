@@ -331,7 +331,7 @@ function groupQuestions() {
     });
 
     activeSections = [];
-    if (nonScoringQs.length > 0) activeSections.push({ type: 'non-scoring', title: 'Tes Pendahuluan (Tidak Dinilai)', desc: 'Bagian ini tidak masuk perhitungan skor. Jawab sesuai kemampuan dan pengetahuan Anda.', questions: nonScoringQs });
+    if (nonScoringQs.length > 0) activeSections.push({ type: 'non-scoring', title: 'Tes Ishikawa/Buta Warna', desc: 'Jawab sesuai kemampuan dan pengetahuan Anda.', questions: nonScoringQs });
     if (mcQs.length > 0) activeSections.push({ type: 'mc', title: 'Pilihan Ganda', desc: 'Pilih satu jawaban yang paling tepat.', questions: mcQs });
     if (binQs.length > 0) activeSections.push({ type: 'binary', title: 'Benar / Salah', desc: 'Tentukan apakah pernyataan berikut Benar atau Salah.', questions: binQs });
     if (essayQs.length > 0) activeSections.push({ type: 'essay', title: 'Essay / Uraian', desc: 'Ketikkan jawaban Anda pada kotak yang disediakan secara lengkap.', questions: essayQs });
@@ -640,7 +640,7 @@ function submitNow(isTimeout) {
     });
 
     var requestId = generateRequestId();
-    
+
     // Baris data untuk disimpan di Supabase
     var row = {
         submitted_at: new Date().toISOString(),
@@ -696,7 +696,7 @@ function generateRequestId() {
 function submitWithRetry(localPayload) {
     var MAX_RETRY = 3;
     var BASE_DELAY = 2000;
-    
+
     // Buat salinan payload dan hapus requestId agar tidak dikirim ke Supabase
     var row = Object.assign({}, localPayload);
     delete row.requestId;
@@ -847,7 +847,7 @@ function onSubmitResult(res) {
 
 function renderResult(res) {
     document.getElementById('result-name-hero').textContent = 'Kerja Bagus, ' + escHtml(res.name) + '!';
-    
+
     var scoreCircle = document.querySelector('.score-circle');
     var badge = document.getElementById('res-badge');
     var remedialEl = document.getElementById('res-remedial');
@@ -904,7 +904,7 @@ function renderResult(res) {
 function loadLeaderboard() {
     document.getElementById('lb-content').innerHTML =
         '<div class="loading"><span class="spin">⟳</span></div>';
-    
+
     var url = SUPABASE_URL + '/rest/v1/assessment_responses'
         + '?select=name,sub_department,correct_count,total_questions,accuracy_pct,base_score,speed_bonus,total_score,time_taken_s'
         + '&order=total_score.desc.nullslast,time_taken_s.asc'
@@ -923,15 +923,15 @@ function loadLeaderboard() {
         .then(function (data) {
             var leaderboardData = data.map(function (r) {
                 return {
-                    name:       r.name,
-                    subDept:    r.sub_department,
-                    correct:    r.correct_count !== null ? r.correct_count : 0,
-                    total:      r.total_questions,
-                    accuracy:   r.accuracy_pct !== null ? r.accuracy_pct : 0,
-                    baseScore:  r.base_score,
+                    name: r.name,
+                    subDept: r.sub_department,
+                    correct: r.correct_count !== null ? r.correct_count : 0,
+                    total: r.total_questions,
+                    accuracy: r.accuracy_pct !== null ? r.accuracy_pct : 0,
+                    baseScore: r.base_score,
                     speedBonus: r.speed_bonus,
                     totalScore: r.total_score !== null ? r.total_score : 0,
-                    timeTaken:  r.time_taken_s
+                    timeTaken: r.time_taken_s
                 };
             });
             renderLeaderboard(leaderboardData);
