@@ -722,18 +722,18 @@ function submitWithRetry(localPayload) {
             .then(function (res) {
                 if (res.ok) {
                     return res.json().then(function (data) {
+                        var insertedRow = data[0] || {};
                         // Bungkus response agar sesuai ekspektasi onSubmitResult
                         resolve({
                             success: true,
                             name: row.name,
-                            isManual: true, // flag bahwa ini dinilai secara manual
-                            correctCount: 0,
-                            totalQuestions: row.total_questions,
-                            accuracy: 0,
-                            baseScore: 0,
-                            speedBonus: 0,
-                            totalScore: null,
-                            timeTaken: row.time_taken_s
+                            correctCount: insertedRow.correct_count !== null ? insertedRow.correct_count : 0,
+                            totalQuestions: insertedRow.total_questions !== null ? insertedRow.total_questions : row.total_questions,
+                            accuracy: insertedRow.accuracy_pct !== null ? insertedRow.accuracy_pct : 0,
+                            baseScore: insertedRow.base_score !== null ? insertedRow.base_score : 0,
+                            speedBonus: insertedRow.speed_bonus !== null ? insertedRow.speed_bonus : 0,
+                            totalScore: insertedRow.total_score,
+                            timeTaken: insertedRow.time_taken_s !== null ? insertedRow.time_taken_s : row.time_taken_s
                         });
                     });
                 } else {
@@ -858,10 +858,12 @@ function renderResult(res) {
     var remedialEl = document.getElementById('res-remedial');
     var bonusEl = document.getElementById('res-bonus');
 
-    if (res.isManual || res.totalScore === null) {
-        // Mode Penilaian Manual
+    var hasEssay = config && config.questions && config.questions.some(function (q) { return q.type === 'essay'; });
+
+    if (hasEssay) {
+        // Mode Penilaian Manual / Campuran (karena ada Essay)
         if (scoreCircle) {
-            scoreCircle.innerHTML = '<span class="score-big" style="font-size:36px;color:var(--purple-600);">✓</span><span class="score-sub">Terkirim</span>';
+            scoreCircle.innerHTML = '<span class="score-big" style="font-size:32px;color:var(--purple-600);">' + Number(res.accuracy) + '%</span><span class="score-sub">Skor Sementara</span>';
         }
         badge.textContent = 'Menunggu Koreksi';
         badge.className = 'result-badge';
@@ -870,7 +872,7 @@ function renderResult(res) {
         badge.style.borderColor = 'var(--purple-150)';
 
         if (remedialEl) {
-            remedialEl.textContent = 'Jawaban Anda telah berhasil disimpan. Hasil penilaian akhir akan diumumkan setelah proses koreksi manual oleh administrator selesai.';
+            remedialEl.textContent = 'Jawaban Anda telah berhasil disimpan. Soal Pilihan Ganda & Benar/Salah telah dinilai secara otomatis. Hasil akhir akan diumumkan setelah proses koreksi manual soal Essay oleh administrator selesai.';
             remedialEl.style.display = 'block';
             remedialEl.style.background = 'var(--purple-50)';
             remedialEl.style.borderColor = 'var(--purple-100)';
@@ -879,12 +881,12 @@ function renderResult(res) {
 
         if (bonusEl) bonusEl.style.display = 'none';
 
-        document.getElementById('res-correct').textContent = '-';
-        document.getElementById('res-accuracy').textContent = '-';
-        document.getElementById('res-base').textContent = '-';
+        document.getElementById('res-correct').textContent = res.correctCount + '/' + res.totalQuestions;
+        document.getElementById('res-accuracy').textContent = res.accuracy + '%';
+        document.getElementById('res-base').textContent = res.baseScore;
         document.getElementById('res-time').textContent = formatTime(res.timeTaken);
     } else {
-        // Mode Penilaian Otomatis
+        // Mode Penilaian Otomatis (Tidak ada Essay)
         if (scoreCircle) {
             scoreCircle.innerHTML = '<span class="score-big" id="res-total-score">' + Number(res.accuracy) + '%</span><span class="score-sub">Score Anda</span>';
         }
@@ -919,7 +921,7 @@ function renderResult(res) {
             badge.className = 'result-badge badge-fail';
             badge.style = ''; // Reset inline style
             if (remedialEl) {
-                remedialEl.textContent = 'Anda akan melaksanakan remedial KSM. Pelaksanaan remedial akan diinformasikan lebih lanjut. Terima kasih sudah melaksanakan KSM (^__)';
+                remedialEl.textContent = 'Anda akan melaksanakan remedial KSM. Pelaksanaan remedial akan diinformasikan lebih lanjut. Terima kasih sudah melaksanakan KSM (^_~)';
                 remedialEl.style.display = 'block';
                 remedialEl.style.background = '';
                 remedialEl.style.borderColor = '';
