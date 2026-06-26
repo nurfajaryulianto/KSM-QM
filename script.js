@@ -140,14 +140,13 @@ function onConfigLoaded(cfg) {
     if (cfg.isOpen) {
         document.getElementById('form-open').style.display = 'block';
         document.getElementById('form-closed').style.display = 'none';
-        // sync toggle checkbox to reflect open state
-        var toggle = document.getElementById('toggle-quiz');
-        if (toggle) toggle.checked = true;
+        var adminChk = document.getElementById('check-assessment-open');
+        if (adminChk) adminChk.checked = true;
     } else {
         document.getElementById('form-open').style.display = 'none';
         document.getElementById('form-closed').style.display = 'block';
-        var toggle = document.getElementById('toggle-quiz');
-        if (toggle) toggle.checked = false;
+        var adminChk = document.getElementById('check-assessment-open');
+        if (adminChk) adminChk.checked = false;
     }
 
     // Check if there is an active draft in localStorage
