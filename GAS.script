@@ -233,15 +233,20 @@ function getConfig() {
       subDepts.push(name);
 
       var qCount = 0;
+      var scoringCount = 0;
       try {
         var questionsList = getQuestionsFromSheet(name); // uses cache internally
         qCount = questionsList.length;
+        questionsList.forEach(function (q) {
+          if (q.scoring !== false) scoringCount++;
+        });
       } catch (e) {}
 
       subDeptMeta[name] = {
         totalQuestions: qCount,
+        scoringQuestions: scoringCount,
         timeLimit: timeLimitMinutes * 60,
-        maxScore: qCount * scorePerQuestion + maxSpeedBonus
+        maxScore: scoringCount * scorePerQuestion + maxSpeedBonus
       };
     }
   });
@@ -369,6 +374,7 @@ function getQuestionsFromSheet(subDept) {
     var ansIdx = colIndices['Answer'];
     var kwIdx = colIndices['Keywords'];
     var imgIdx = colIndices['Image URL'] !== undefined ? colIndices['Image URL'] : colIndices['Image'];
+    var scoringIdx = colIndices['Scoring'];
 
     var title = String(row[titleIdx]).trim();
     if (!title) continue; // skip blank rows
@@ -438,6 +444,15 @@ function getQuestionsFromSheet(subDept) {
         .filter(Boolean);
     }
 
+    // Parse Scoring column — default to true if column missing or value is empty/yes
+    var scoring = true;
+    if (scoringIdx !== undefined) {
+      var rawScoring = String(row[scoringIdx]).trim().toLowerCase();
+      if (rawScoring === 'no' || rawScoring === 'false' || rawScoring === 'tidak' || rawScoring === '0') {
+        scoring = false;
+      }
+    }
+
     questions.push({
       id: i,
       type: type,
@@ -446,7 +461,8 @@ function getQuestionsFromSheet(subDept) {
       answer: answer,
       difficulty: difficulty,
       keywords: keywords.length > 0 ? keywords : null,
-      imageUrl: imageUrl || null
+      imageUrl: imageUrl || null,
+      scoring: scoring
     });
   }
 
@@ -513,12 +529,14 @@ function startSession(nik, name, subDept) {
     return { success: false, message: 'Belum ada soal untuk sub-department ' + subDept };
   }
 
-  // Strip answers before sending to client
+  // Strip answers before sending to client, include scoring flag
+  var scoringCount = 0;
   var questionsClient = questionsRaw.map(function (q) {
-    var item = { id: q.id, type: q.type, question: q.question, imageUrl: q.imageUrl };
+    var item = { id: q.id, type: q.type, question: q.question, imageUrl: q.imageUrl, scoring: q.scoring !== false };
     if (q.type === 'mc' || q.type === 'binary') {
       item.options = q.options;
     }
+    if (item.scoring) scoringCount++;
     return item;
   });
 
@@ -526,7 +544,8 @@ function startSession(nik, name, subDept) {
     success: true,
     timeLimit: timeLimitMinutes * 60,
     totalQuestions: questionsClient.length,
-    maxScore: questionsClient.length * scorePerQuestion + maxSpeedBonus,
+    scoringQuestions: scoringCount,
+    maxScore: scoringCount * scorePerQuestion + maxSpeedBonus,
     questions: questionsClient
   };
 }
@@ -593,10 +612,16 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
     var mcCorrect = 0;
     var binaryCorrect = 0;
     var essayCorrect = 0;
+    var scoringQuestionCount = 0;
 
     questionsList.forEach(function (q, i) {
+      // Skip non-scoring questions from score calculations
+      if (q.scoring === false) return;
+
+      scoringQuestionCount++;
       var qScore = 0;
       var isCorrect = false;
+
 
       if (q.type === 'essay') {
         var ansText = String(answers[i] || '').toLowerCase().trim();
@@ -649,7 +674,9 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
     var timeRemaining = Math.max(0, timeLimitSeconds - timeTaken);
     var speedBonus = Math.floor((timeRemaining / timeLimitSeconds) * maxSpeedBonus);
     var totalScore = baseScore + speedBonus;
-    var accuracy = Math.round((correctCount / questionsList.length) * 100);
+    // Accuracy based only on scoring questions
+    var scoringTotal = scoringQuestionCount > 0 ? scoringQuestionCount : questionsList.length;
+    var accuracy = Math.round((correctCount / scoringTotal) * 100);
 
     var finalName = name.trim();
     if (enforceWhitelist) {
@@ -735,6 +762,7 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
       name: finalName,
       correctCount: correctCount,
       totalQuestions: questionsList.length,
+      scoringQuestions: scoringQuestionCount,
       accuracy: accuracy,
       baseScore: baseScore,
       speedBonus: speedBonus,

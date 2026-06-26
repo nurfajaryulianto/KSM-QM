@@ -936,3 +936,50 @@ input[type="datetime-local"]:focus {
     line-height: 1.55;
 }
 
+/* ---- Non-Scoring Question (Tes Pendahuluan) ---- */
+.badge-non-scoring {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--amber-600);
+    background: var(--amber-50);
+    border: 0.5px solid var(--amber-100);
+    border-radius: 999px;
+    padding: 3px 10px;
+    margin-bottom: 10px;
+}
+
+.non-scoring-card {
+    border-left: 3px solid var(--amber-100);
+    background: #fdfbf5;
+}
+
+.non-scoring-card .q-number {
+    color: var(--amber-600);
+}
+
+/* ---- Section Header ---- */
+.section-header {
+    padding: 14px 0 10px;
+    margin-bottom: 0.5rem;
+}
+
+.section-header h2 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--gray-800);
+    margin-bottom: 4px;
+}
+
+.section-header .text-muted {
+    font-size: 13px;
+    color: var(--gray-600);
+}
+
+.non-scoring-section-header h2 {
+    color: var(--amber-600);
+}

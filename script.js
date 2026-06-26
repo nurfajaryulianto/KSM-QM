@@ -270,6 +270,7 @@ function initQuiz() {
 }
 
 function groupQuestions() {
+    var nonScoringQs = [];
     var mcQs = [];
     var binQs = [];
     var essayQs = [];
@@ -277,7 +278,9 @@ function groupQuestions() {
     config.questions.forEach(function (q, idx) {
         var qCopy = Object.assign({}, q);
         qCopy.originalIndex = idx;
-        if (q.type === 'mc') {
+        if (q.scoring === false) {
+            nonScoringQs.push(qCopy);
+        } else if (q.type === 'mc') {
             mcQs.push(qCopy);
         } else if (q.type === 'binary') {
             binQs.push(qCopy);
@@ -287,6 +290,16 @@ function groupQuestions() {
     });
 
     activeSections = [];
+
+    // Non-scoring section always appears FIRST
+    if (nonScoringQs.length > 0) {
+        activeSections.push({
+            type: 'non-scoring',
+            title: 'Tes Pendahuluan (Tidak Dinilai)',
+            desc: 'Bagian ini tidak masuk perhitungan skor. Jawab sesuai kemampuan dan pengetahuan Anda.',
+            questions: nonScoringQs
+        });
+    }
     if (mcQs.length > 0) {
         activeSections.push({
             type: 'mc',
@@ -371,7 +384,7 @@ function renderCurrentSection() {
 
     // Render section title and description
     var secHeader = document.createElement('div');
-    secHeader.className = 'section-header';
+    secHeader.className = 'section-header' + (section.type === 'non-scoring' ? ' non-scoring-section-header' : '');
     secHeader.innerHTML = '<h2>' + section.title + '</h2><span class="text-muted">' + section.desc + '</span>';
     container.appendChild(secHeader);
 
@@ -417,10 +430,19 @@ function renderCurrentSection() {
 
 function renderQuestionBlock(q) {
     var origIdx = q.originalIndex;
+    var isNonScoring = (q.scoring === false);
 
     var card = document.createElement('div');
-    card.className = 'question-card';
+    card.className = 'question-card' + (isNonScoring ? ' non-scoring-card' : '');
     card.id = 'q-card-' + origIdx;
+
+    // Non-scoring badge
+    if (isNonScoring) {
+        var nsBadge = document.createElement('div');
+        nsBadge.className = 'badge-non-scoring';
+        nsBadge.textContent = '⚪ Tidak Dinilai';
+        card.appendChild(nsBadge);
+    }
 
     // Soal Number
     var qNum = document.createElement('div');
@@ -543,25 +565,31 @@ function updateDotHighlights() {
 }
 
 function updateProgress() {
-    var n = config.questions.length;
-
     updateDotHighlights();
 
-    var unanswered = answers.filter(function (a, i) {
-        var qItem = config.questions[i];
-        if (qItem.type === 'essay') return !a.trim();
-        return a === -1;
-    }).length;
+    // Count only scoring questions for progress display
+    var scoringTotal = 0;
+    var scoringAnswered = 0;
+    config.questions.forEach(function (qItem, i) {
+        if (qItem.scoring === false) return; // skip non-scoring
+        scoringTotal++;
+        var a = answers[i];
+        var answered = (qItem.type === 'essay') ? (a && a.trim()) : (a !== -1);
+        if (answered) scoringAnswered++;
+    });
 
-    document.getElementById('progress-lbl').textContent = (n - unanswered) + ' / ' + n + ' answered';
+    document.getElementById('progress-lbl').textContent = scoringAnswered + ' / ' + scoringTotal + ' answered';
 }
 
 function confirmSubmit() {
-    var unanswered = answers.filter(function (a, i) {
-        var qItem = config.questions[i];
-        if (qItem.type === 'essay') return !a.trim();
-        return a === -1;
-    }).length;
+    // Only count unanswered scoring questions in the warning
+    var unanswered = 0;
+    config.questions.forEach(function (qItem, i) {
+        if (qItem.scoring === false) return; // skip non-scoring
+        var a = answers[i];
+        var answered = (qItem.type === 'essay') ? (a && a.trim()) : (a !== -1);
+        if (!answered) unanswered++;
+    });
 
     var msg = unanswered > 0
         ? 'Anda memiliki ' + unanswered + ' soal yang belum dijawab. Tetap kirim?'
@@ -1192,12 +1220,17 @@ function handleQuestionsUpload() {
 
                     var imageUrl = String(row['Image URL'] || row['Image'] || '').trim();
 
+                    // Parse Scoring column — default Yes if missing or empty
+                    var scoringVal = String(row['Scoring'] || '').trim().toLowerCase();
+                    var scoring = !(scoringVal === 'no' || scoringVal === 'tidak' || scoringVal === 'false' || scoringVal === '0');
+
                     questions.push({
                         question: questionText,
                         difficulty: parseInt(diffLevel) || 1,
                         type: type,
                         options: options,
                         answer: answer,
+                        scoring: scoring,
                         questionKnowledge: row['Question Knowledge'] || '',
                         keywords: keywords,
                         imageUrl: imageUrl
@@ -1458,6 +1491,7 @@ function downloadExcelTemplate() {
         "Title",
         "Difficulty Level",
         "Type Questions (Multiple Choice, Essay, Binary)",
+        "Scoring",
         "Answer",
         "Keywords",
         "Image URL",
@@ -1466,9 +1500,22 @@ function downloadExcelTemplate() {
 
     var sampleRows = [
         {
+            "Title": "[NON-SCORING EXAMPLE] Apakah Anda dapat membedakan warna merah dan hijau dengan jelas?",
+            "Difficulty Level": 1,
+            "Type Questions (Multiple Choice, Essay, Binary)": "Binary",
+            "Scoring": "No",
+            "Answer": "Benar",
+            "Keywords": "",
+            "Image URL": "",
+            "A": "Ya",
+            "B": "Tidak",
+            "C": "", "D": "", "E": ""
+        },
+        {
             "Title": "Siapa pendiri organisasi PMI (Palang Merah Indonesia)?",
             "Difficulty Level": 1,
             "Type Questions (Multiple Choice, Essay, Binary)": "Multiple Choice",
+            "Scoring": "Yes",
             "Answer": "A",
             "Keywords": "",
             "Image URL": "",
@@ -1482,6 +1529,7 @@ function downloadExcelTemplate() {
             "Title": "Apakah gambar logo KSM berwarna biru?",
             "Difficulty Level": 1,
             "Type Questions (Multiple Choice, Essay, Binary)": "Binary",
+            "Scoring": "Yes",
             "Answer": "Benar",
             "Keywords": "",
             "Image URL": "https://picsum.photos/400/200",
@@ -1493,6 +1541,7 @@ function downloadExcelTemplate() {
             "Title": "Jelaskan apa tujuan utama dari Quality Control di unit produksi!",
             "Difficulty Level": 2,
             "Type Questions (Multiple Choice, Essay, Binary)": "Essay",
+            "Scoring": "Yes",
             "Answer": "Tujuan Quality Control adalah memastikan produk yang dihasilkan memenuhi standar kualitas yang ditetapkan perusahaan, mendeteksi cacat sedini mungkin, dan menjaga kepuasan pelanggan.",
             "Keywords": "standar, kualitas, cacat, kepuasan, pelanggan",
             "Image URL": "",
