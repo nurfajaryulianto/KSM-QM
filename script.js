@@ -1448,3 +1448,30 @@ function escHtml(str) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 }
+
+function initAdminToggle() {
+    const toggle = document.getElementById('assessmentToggle');
+    const label = document.getElementById('toggleLabel');
+
+    // load current state from backend
+    google.script.run.withSuccessHandler(info => {
+        toggle.checked = info.open;
+        label.textContent = info.open ? 'Open' : 'Closed';
+    }).getAdminInfo();
+
+    // user toggles
+    toggle.addEventListener('change', () => {
+        const fn = toggle.checked ? 'adminOpenAssessment' : 'adminCloseAssessment';
+        google.script.run.withSuccessHandler(res => {
+            if (res.success) {
+                label.textContent = toggle.checked ? 'Open' : 'Closed';
+                showToast(res.message);
+            } else {
+                // rollback UI on failure
+                toggle.checked = !toggle.checked;
+                showToast('⚠️ ' + res.message);
+            }
+        })[fn]();   // dynamic GAS call
+    });
+}
+document.addEventListener('DOMContentLoaded', initAdminToggle);
