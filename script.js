@@ -930,6 +930,24 @@ async function downloadResponses() {
     btn.disabled = true;
 
     try {
+        // ─── Step 1: Fetch question titles dari GAS ───────────────────
+        var questionMap = {}; // { "Q1": "Teks soal ke-1", "Q2": ... }
+        try {
+            var qRes = await fetch(
+                GAS_URL + '?action=getQuestionsForDownload&password=' + encodeURIComponent(adminPasswordSession)
+            );
+            if (qRes.ok) {
+                var qData = await qRes.json();
+                if (qData.success && qData.questionMap) {
+                    questionMap = qData.questionMap;
+                }
+            }
+        } catch (qErr) {
+            // Tidak fatal — header akan tetap Q1, Q2 dst jika gagal
+            console.warn('Gagal fetch question map:', qErr.message);
+        }
+
+        // ─── Step 2: Fetch response data dari Supabase ─────────────────
         var res = await fetch(
             SUPABASE_URL + '/rest/v1/assessment_responses?select=*&order=submitted_at.asc',
             {
@@ -953,12 +971,18 @@ async function downloadResponses() {
             return parseInt(a.replace('Q', '')) - parseInt(b.replace('Q', ''));
         });
 
+        // ─── Step 3: Build CSV headers — ganti Q1/Q2 dengan teks soal ─────
+        // Format: "Q1: Teks soal pertama" atau tetap "Q1" jika tidak ada mapping
+        var qHeaders = allQKeys.map(function (k) {
+            return questionMap[k] ? (k + ': ' + questionMap[k]) : k;
+        });
+
         var headers = [
             'Timestamp', 'NIK', 'Name', 'Sub-Department',
             'Correct', 'Total Questions', 'Accuracy (%)',
             'Base Score', 'Speed Bonus', 'Total Score', 'Time Taken (s)',
             'MC Score', 'Binary Score', 'Essay Score',
-            ...allQKeys
+            ...qHeaders
         ];
 
         var rows = data.map(function (r) {
@@ -1209,8 +1233,22 @@ function handleQuestionsUpload() {
                         var lowerAns = answerVal.toLowerCase();
                         answer = (lowerAns === 'ya' || lowerAns === 'benar' || lowerAns === 'a' || lowerAns === '0' || lowerAns === 'true' || lowerAns === 'yes') ? 0 : 1;
                     } else if (type === 'mc') {
+                        // Case 1: answer is a letter like "A", "B", "C"
                         var letterIdx = choiceLetters.indexOf(answerVal.toUpperCase());
-                        answer = letterIdx !== -1 ? letterIdx : (parseInt(answerVal) || 0);
+                        if (letterIdx !== -1) {
+                            answer = letterIdx;
+                        } else {
+                            // Case 2: answer matches the text/value of one of the options
+                            // (e.g. template punya options ["12","8","29"] dan Answer="12" → index 0)
+                            var matchedIdx = options.indexOf(answerVal);
+                            if (matchedIdx !== -1) {
+                                answer = matchedIdx;
+                            } else {
+                                // Case 3: answer is a numeric index directly (fallback)
+                                var numAns = parseInt(answerVal);
+                                answer = isNaN(numAns) ? 0 : numAns;
+                            }
+                        }
                     } else {
                         answer = answerVal;
                     }
@@ -1421,13 +1459,48 @@ function closeImageZoom() {
 function downloadExcelTemplate() {
     var headers = [
         'Title', 'Difficulty Level', 'Type Questions (Multiple Choice, Essay, Binary)',
-        'Scoring', 'Answer', 'Keywords', 'Image URL', 'A', 'B', 'C', 'D', 'E'
+        'Scoring', 'Answer', 'Question Knowledge', 'Keywords', 'Image URL',
+        'A', 'B', 'C', 'D', 'E'
     ];
     var sampleRows = [
-        { 'Title': '[NON-SCORING] Apakah Anda dapat membedakan warna merah dan hijau dengan jelas?', 'Difficulty Level': 1, 'Type Questions (Multiple Choice, Essay, Binary)': 'Binary', 'Scoring': 'No', 'Answer': 'Benar', 'Keywords': '', 'Image URL': '', 'A': 'Ya', 'B': 'Tidak', 'C': '', 'D': '', 'E': '' },
-        { 'Title': 'Siapa pendiri PMI?', 'Difficulty Level': 1, 'Type Questions (Multiple Choice, Essay, Binary)': 'Multiple Choice', 'Scoring': 'Yes', 'Answer': 'A', 'Keywords': '', 'Image URL': '', 'A': 'Drs. Moh. Hatta', 'B': 'Ir. Soekarno', 'C': 'Sutan Sjahrir', 'D': 'Ki Hajar Dewantara', 'E': '' },
-        { 'Title': 'Apakah logo KSM berwarna biru?', 'Difficulty Level': 1, 'Type Questions (Multiple Choice, Essay, Binary)': 'Binary', 'Scoring': 'Yes', 'Answer': 'Benar', 'Keywords': '', 'Image URL': 'https://picsum.photos/400/200', 'A': 'Benar', 'B': 'Salah', 'C': '', 'D': '', 'E': '' },
-        { 'Title': 'Jelaskan tujuan Quality Control di unit produksi!', 'Difficulty Level': 2, 'Type Questions (Multiple Choice, Essay, Binary)': 'Essay', 'Scoring': 'Yes', 'Answer': 'Tujuan QC adalah memastikan produk memenuhi standar kualitas.', 'Keywords': 'standar, kualitas, cacat, kepuasan, pelanggan', 'Image URL': '', 'A': '', 'B': '', 'C': '', 'D': '', 'E': '' }
+        // Contoh 1: Soal Non-scoring (Binary) — Ishikawa/Buta Warna, tidak dihitung skor
+        {
+            'Title': '[NON-SCORING] Apakah Anda dapat membedakan warna merah dan hijau dengan jelas?',
+            'Difficulty Level': 1, 'Type Questions (Multiple Choice, Essay, Binary)': 'Binary',
+            'Scoring': 'No', 'Answer': 'Ya', 'Question Knowledge': '', 'Keywords': '', 'Image URL': '',
+            'A': 'Ya', 'B': 'Tidak', 'C': '', 'D': '', 'E': ''
+        },
+        // Contoh 2: Soal MC dengan Answer berupa HURUF (A, B, C...) — cara yang direkomendasikan
+        {
+            'Title': 'Siapa pendiri PMI?',
+            'Difficulty Level': 1, 'Type Questions (Multiple Choice, Essay, Binary)': 'Multiple Choice',
+            'Scoring': 'Yes', 'Answer': 'A', 'Question Knowledge': 'Sejarah PMI', 'Keywords': 'PMI, pendiri', 'Image URL': '',
+            'A': 'Drs. Moh. Hatta', 'B': 'Ir. Soekarno', 'C': 'Sutan Sjahrir', 'D': 'Ki Hajar Dewantara', 'E': ''
+        },
+        // Contoh 3: Soal MC dengan Answer berupa NILAI TEKS (sama dengan isi salah satu opsi)
+        // Misal soal identifikasi angka — opsi berisi angka, jawaban adalah angka yang benar
+        {
+            'Title': 'Berapa nilai standar batas AQL untuk defect mayor?',
+            'Difficulty Level': 2, 'Type Questions (Multiple Choice, Essay, Binary)': 'Multiple Choice',
+            'Scoring': 'Yes', 'Answer': '1.0', 'Question Knowledge': 'AQL Standard', 'Keywords': 'AQL, defect, mayor', 'Image URL': '',
+            'A': '0.65', 'B': '1.0', 'C': '1.5', 'D': '2.5', 'E': '4.0'
+        },
+        // Contoh 4: Binary scoring
+        {
+            'Title': 'Apakah logo KSM berwarna biru?',
+            'Difficulty Level': 1, 'Type Questions (Multiple Choice, Essay, Binary)': 'Binary',
+            'Scoring': 'Yes', 'Answer': 'Benar', 'Question Knowledge': '', 'Keywords': '', 'Image URL': 'https://picsum.photos/400/200',
+            'A': 'Benar', 'B': 'Salah', 'C': '', 'D': '', 'E': ''
+        },
+        // Contoh 5: Essay
+        {
+            'Title': 'Jelaskan tujuan Quality Control di unit produksi!',
+            'Difficulty Level': 2, 'Type Questions (Multiple Choice, Essay, Binary)': 'Essay',
+            'Scoring': 'Yes',
+            'Answer': 'Tujuan QC adalah memastikan produk memenuhi standar kualitas.',
+            'Question Knowledge': 'Quality Control', 'Keywords': 'standar, kualitas, cacat, kepuasan, pelanggan', 'Image URL': '',
+            'A': '', 'B': '', 'C': '', 'D': '', 'E': ''
+        }
     ];
     try {
         var ws = XLSX.utils.json_to_sheet(sampleRows, { header: headers });
@@ -1438,6 +1511,7 @@ function downloadExcelTemplate() {
         customAlert('Gagal mengunduh template: ' + e.message, 'Gagal', 'danger');
     }
 }
+
 
 // ============================================================
 //  GENERIC HELPERS

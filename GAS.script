@@ -126,6 +126,8 @@ function doGet(e) {
       result = getLeaderboard();
     } else if (action === 'verifyAdmin') {
       result = verifyAdmin(e.parameter.password);
+    } else if (action === 'getQuestionsForDownload') {
+      result = getQuestionsForDownload(e.parameter.password);
     } else {
       return HtmlService.createHtmlOutput('<h1>LMS QC API is running</h1><p>Action parameter is required.</p>');
     }
@@ -775,7 +777,7 @@ function importQuestions(password, data) {
     }
 
     var headers = [
-      'Title', 'Difficulty Level', 'Type', 'Answer',
+      'Title', 'Difficulty Level', 'Type', 'Scoring', 'Answer',
       'Question Knowledge', 'Keywords', 'Image URL',
       'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'
     ];
@@ -792,12 +794,19 @@ function importQuestions(password, data) {
       row.push(item.difficulty || 1);
       row.push(item.type || 'mc');
 
+      // Simpan kolom Scoring — 'Yes'/'No'
+      row.push((item.scoring === false) ? 'No' : 'Yes');
+
+      // Konversi answer index (0-9) ke huruf untuk MC
+      // Jika angka > 9 (misal template pakai nilai numerik), simpan as-is sebagai string
       if (item.type === 'mc') {
         if (typeof rawAns === 'number' && rawAns >= 0 && rawAns < letters.length) {
-          rawAns = letters[rawAns];
+          rawAns = letters[rawAns]; // 0→A, 1→B, dst
+        } else {
+          rawAns = String(rawAns); // Simpan as-is
         }
       } else if (item.type === 'binary') {
-        rawAns = rawAns === 0 ? 'A' : 'B';
+        rawAns = (rawAns === 0 || rawAns === '0') ? 'A' : 'B';
       }
       row.push(rawAns);
 
@@ -933,6 +942,50 @@ function closeAssessment() {
 function setAssessmentTitle(title) {
   getSpreadsheet().getSheetByName('Config').getRange('B2').setValue(title);
   clearCache('config_main');
+}
+
+/**
+ * Returns a mapping of question-key → question-text for all sub-departments.
+ * Used by the frontend to replace Q1/Q2/… column headers with real question text
+ * when generating the CSV download.
+ *
+ * Response format:
+ * { success: true, questionMap: { "Q1": "Teks soal 1", "Q2": "Teks soal 2", ... } }
+ *
+ * Note: Q-keys are 1-based to match what getQuestionsFromSheet stores in answersDetail.
+ * Password required to prevent unauthenticated access to question text.
+ */
+function getQuestionsForDownload(password) {
+  var verification = verifyAdmin(password);
+  if (!verification.success) return verification;
+
+  var ss         = getSpreadsheet();
+  var sheets     = ss.getSheets();
+  var questionMap = {}; // global map: "subDept::Q1" → question text, or "Q1" → text
+
+  // Build a flat ordered map per sub-dept key: "SubDept|Q1" → text
+  var bySubDept = {}; // { subDept: [ { key: "Q1", text: "..." }, ... ] }
+
+  var skip = ['Config', 'Responses', 'Participants', 'Global'];
+
+  sheets.forEach(function(sheet) {
+    var name = sheet.getName();
+    if (skip.indexOf(name) !== -1 || name.indexOf('Responses') === 0) return;
+    try {
+      var questions = getQuestionsFromSheet(name);
+      var list = [];
+      questions.forEach(function(q) {
+        // q.id is the 1-based row index used when building answersDetail
+        list.push({ key: 'Q' + q.id, text: q.question });
+        questionMap['Q' + q.id] = q.question; // flat fallback
+      });
+      bySubDept[name] = list;
+    } catch (e) {
+      // Skip sheets with errors
+    }
+  });
+
+  return { success: true, questionMap: questionMap, bySubDept: bySubDept };
 }
 
 /**
