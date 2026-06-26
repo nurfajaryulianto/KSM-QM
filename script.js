@@ -663,24 +663,17 @@ function submitNow(isTimeout) {
     document.getElementById('screen-loading').innerHTML =
         '<div class="loading"><div class="spin" style="font-size:28px">⟳</div><p style="margin-top:1rem">' + loadingText + '</p></div>';
 
-    fetch(GAS_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify(payload)
-    })
-        .then(function (res) { return res.json(); })
-        .then(function (res) {
-            // On success, remove this request from pending list
-            removePendingSubmission(requestId);
-            onSubmitResult(res);
-        })
-        .catch(function (e) {
-            customAlert('Pengiriman gagal: ' + e.message + '\nSilakan coba lagi.', 'Gagal Mengirim', 'danger').then(function() {
-                showScreen('screen-quiz');
-                startTimer();
-            });
-            // Keep the payload in pending storage for later retry
+    submitWithRetry(payload).then(function (res) {
+        // On success, remove this request from pending list
+        removePendingSubmission(requestId);
+        onSubmitResult(res);
+    }).catch(function (e) {
+        customAlert('Pengiriman gagal: ' + e.message + '\nSilakan coba lagi.', 'Gagal Mengirim', 'danger').then(function() {
+            showScreen('screen-quiz');
+            startTimer();
         });
+        // Keep the payload in pending storage for later retry
+    });
 }
 
 // Utility: generate a UUID request identifier (uses Web Crypto API when available)
@@ -690,6 +683,102 @@ function generateRequestId() {
     }
     // Fallback: simple random hex string
     return 'req_' + Math.random().toString(16).slice(2) + Date.now();
+}
+
+// ============================================================
+//  Submit dengan Retry Otomatis + Exponential Backoff
+// ============================================================
+
+/**
+ * Kirim jawaban ke GAS dengan retry otomatis.
+ * Jika GAS balas success:false karena "server sibuk",
+ * script akan coba lagi maksimal MAX_RETRY kali dengan jeda exponential backoff.
+ *
+ * Mengembalikan Promise<Object> — response dari GAS.
+ */
+function submitWithRetry(payload) {
+    var MAX_RETRY  = 3;       // maksimal percobaan ulang
+    var BASE_DELAY = 2000;    // jeda awal: 2 detik
+    var RETRY_MESSAGES = [    // substring pesan error GAS yang layak di-retry
+        'server sedang sibuk',
+        'gagal mendapatkan giliran',
+        'coba lagi'
+    ];
+
+    function attempt(attemptNum, resolve, reject) {
+        if (attemptNum > 1) {
+            showSubmitStatus('Mencoba ulang... (' + attemptNum + '/' + MAX_RETRY + ')');
+        }
+
+        fetch(GAS_URL, {
+            method : 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body   : JSON.stringify(payload)
+        })
+        .then(function (res) { return res.json(); })
+        .then(function (data) {
+            // Sukses — langsung resolve
+            if (data.success === true) {
+                resolve(data);
+                return;
+            }
+
+            // Cek apakah perlu retry (hanya untuk error concurrency GAS)
+            var msg = (data.message || '').toLowerCase();
+            var shouldRetry = RETRY_MESSAGES.some(function (kw) {
+                return msg.indexOf(kw) !== -1;
+            });
+
+            if (!shouldRetry || attemptNum >= MAX_RETRY) {
+                // Gagal permanen atau sudah habis retry — kembalikan apa adanya
+                resolve(data);
+                return;
+            }
+
+            // Exponential backoff: 2s → 4s → 8s
+            var delay = BASE_DELAY * Math.pow(2, attemptNum - 1);
+            console.log('[Retry ' + attemptNum + '] GAS sibuk, coba lagi dalam ' + (delay / 1000) + 's...');
+            sleep(delay).then(function () {
+                attempt(attemptNum + 1, resolve, reject);
+            });
+        })
+        .catch(function (networkError) {
+            // Network error (timeout, offline, dll)
+            console.error('[Retry ' + attemptNum + '] Network error:', networkError.message);
+
+            if (attemptNum < MAX_RETRY) {
+                var delay = BASE_DELAY * Math.pow(2, attemptNum - 1);
+                sleep(delay).then(function () {
+                    attempt(attemptNum + 1, resolve, reject);
+                });
+            } else {
+                // Semua retry habis — reject agar ditangkap oleh .catch() di pemanggil
+                reject(networkError);
+            }
+        });
+    }
+
+    return new Promise(function (resolve, reject) {
+        attempt(1, resolve, reject);
+    });
+}
+
+/** Helper: tunda eksekusi selama ms milidetik. */
+function sleep(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
+
+/**
+ * Update teks di loading screen saat retry berlangsung,
+ * sehingga user tahu aplikasi sedang mencoba ulang.
+ */
+function showSubmitStatus(message) {
+    var loadingEl = document.getElementById('screen-loading');
+    if (loadingEl) {
+        loadingEl.innerHTML =
+            '<div class="loading"><div class="spin" style="font-size:28px">⟳</div>' +
+            '<p style="margin-top:1rem">' + message + '</p></div>';
+    }
 }
 
 // LocalStorage helpers for pending submissions (array of payload objects)

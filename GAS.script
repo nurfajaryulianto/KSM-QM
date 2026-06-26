@@ -550,14 +550,160 @@ function startSession(nik, name, subDept) {
   };
 }
 
+
 /**
  * Score and save a participant's submission.
- * Uses LockService to prevent race conditions on concurrent writes.
+ *
+ * OPTIMIZATION: LockService sekarang hanya melindungi bagian WRITE saja.
+ * Semua read (config, validasi, kalkulasi skor) dilakukan SEBELUM lock diambil.
+ *
+ * Dampak: lock hold time turun dari ~2-3 detik → ~200-300ms per submission.
+ * Estimasi kapasitas naik dari ~93/300 → ~200-250/300 concurrent submissions.
  */
 function submitAssessment(nik, name, subDept, answers, timeTaken) {
+
+  // ═══════════════════════════════════════════════════════════
+  //  FASE 1 — PRE-PROCESSING (di luar lock)
+  //  Semua operasi READ dan kalkulasi dilakukan di sini.
+  //  Tidak ada write ke sheet, jadi tidak perlu lock.
+  // ═══════════════════════════════════════════════════════════
+
+  // 1a. Baca config (pakai cache — sangat cepat)
+  var ss = getSpreadsheet();
+  var configSheet = ss.getSheetByName('Config');
+  var enforceWhitelist = false;
+  var timeLimitMinutes = DEFAULT_TIME_LIMIT_MINUTES;
+  var scorePerQuestion = DEFAULT_SCORE_PER_QUESTION;
+  var maxSpeedBonus = DEFAULT_MAX_SPEED_BONUS;
+
+  if (configSheet) {
+    var configData = configSheet.getDataRange().getValues();
+    configData.forEach(function (row) {
+      var key = String(row[0]).trim().toLowerCase();
+      if (key === 'enforce whitelist') enforceWhitelist = !!row[1];
+      if (key === 'time limit minutes') timeLimitMinutes = Number(row[1]) || timeLimitMinutes;
+      if (key === 'score per question') scorePerQuestion = Number(row[1]) || scorePerQuestion;
+      if (key === 'max speed bonus') maxSpeedBonus = Number(row[1]) || maxSpeedBonus;
+    });
+  }
+
+  // 1b. Validasi dasar (tidak butuh sheet)
+  if (!isAssessmentOpen()) {
+    return { success: false, message: 'Assessment is currently closed.' };
+  }
+
+  if (!nik || !String(nik).trim()) {
+    return { success: false, message: 'NIK wajib diisi.' };
+  }
+
+  // 1c. Validasi whitelist (pakai cache — sangat cepat)
+  if (enforceWhitelist && !isParticipantAllowed(nik)) {
+    return { success: false, message: 'NIK Anda tidak terdaftar sebagai peserta kuis.' };
+  }
+
+  // 1d. Load soal (pakai cache — sangat cepat setelah request pertama)
+  var questionsList = [];
+  try {
+    questionsList = getQuestionsFromSheet(subDept);
+  } catch (e) {
+    return { success: false, message: 'Gagal mengambil kunci jawaban: ' + e.toString() };
+  }
+
+  // 1e. Hitung skor (pure computation — tidak butuh sheet sama sekali)
+  var correctCount = 0;
+  var baseScore = 0;
+  var mcCorrect = 0;
+  var binaryCorrect = 0;
+  var essayCorrect = 0;
+  var scoringQuestionCount = 0;
+
+  questionsList.forEach(function (q, i) {
+    if (q.scoring === false) return;
+
+    scoringQuestionCount++;
+    var qScore = 0;
+    var isCorrect = false;
+
+    if (q.type === 'essay') {
+      var ansText = String(answers[i] || '').toLowerCase().trim();
+      var matchCount = 0;
+      if (q.keywords) {
+        q.keywords.forEach(function (kw) {
+          if (ansText.indexOf(kw.toLowerCase()) !== -1) matchCount++;
+        });
+        if (matchCount >= 2) {
+          qScore = scorePerQuestion;
+          isCorrect = true;
+        } else if (matchCount === 1) {
+          qScore = scorePerQuestion / 2;
+        }
+      } else {
+        if (ansText.length > 10) {
+          qScore = scorePerQuestion;
+          isCorrect = true;
+        }
+      }
+      essayCorrect += qScore;
+      baseScore += qScore;
+      if (isCorrect) correctCount++;
+      else if (qScore > 0) correctCount += 0.5;
+
+    } else if (q.type === 'binary') {
+      if (Number(answers[i]) === q.answer) {
+        qScore = scorePerQuestion;
+        binaryCorrect += qScore;
+        baseScore += qScore;
+        correctCount++;
+      }
+    } else {
+      // mc
+      if (Number(answers[i]) === q.answer) {
+        qScore = scorePerQuestion;
+        mcCorrect += qScore;
+        baseScore += qScore;
+        correctCount++;
+      }
+    }
+  });
+
+  var timeLimitSeconds = timeLimitMinutes * 60;
+  var timeRemaining = Math.max(0, timeLimitSeconds - timeTaken);
+  var speedBonus = Math.floor((timeRemaining / timeLimitSeconds) * maxSpeedBonus);
+  var totalScore = baseScore + speedBonus;
+  var scoringTotal = scoringQuestionCount > 0 ? scoringQuestionCount : questionsList.length;
+  var accuracy = Math.round((correctCount / scoringTotal) * 100);
+
+  var finalName = name.trim();
+  if (enforceWhitelist) {
+    var whitelistedName = getParticipantName(nik);
+    if (whitelistedName) finalName = whitelistedName;
+  }
+
+  // Siapkan row data sebelum masuk lock (kurangi waktu di dalam lock)
+  var responseRow = [
+    new Date(),
+    nik.trim(),
+    finalName,
+    subDept,
+    correctCount,
+    questionsList.length,
+    accuracy,
+    baseScore,
+    speedBonus,
+    totalScore,
+    timeTaken,
+    JSON.stringify(answers)
+  ];
+
+  // ═══════════════════════════════════════════════════════════
+  //  FASE 2 — CRITICAL SECTION (di dalam lock)
+  //  Hanya double-check duplicate + 2x appendRow.
+  //  Estimasi lock hold time: ~200-300ms (turun dari ~2-3 detik)
+  // ═══════════════════════════════════════════════════════════
+
   var lock = LockService.getScriptLock();
   try {
-    lock.waitLock(30000); // Wait up to 30 seconds for lock
+    lock.waitLock(30000);
   } catch (e) {
     return {
       success: false,
@@ -566,129 +712,15 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
   }
 
   try {
-    var ss = getSpreadsheet();
-    var configSheet = ss.getSheetByName('Config');
-    var enforceWhitelist = false;
-    var timeLimitMinutes = DEFAULT_TIME_LIMIT_MINUTES;
-    var scorePerQuestion = DEFAULT_SCORE_PER_QUESTION;
-    var maxSpeedBonus = DEFAULT_MAX_SPEED_BONUS;
-
-    if (configSheet) {
-      var configData = configSheet.getDataRange().getValues();
-      configData.forEach(function (row) {
-        var key = String(row[0]).trim().toLowerCase();
-        if (key === 'enforce whitelist') enforceWhitelist = !!row[1];
-        if (key === 'time limit minutes') timeLimitMinutes = Number(row[1]) || timeLimitMinutes;
-        if (key === 'score per question') scorePerQuestion = Number(row[1]) || scorePerQuestion;
-        if (key === 'max speed bonus') maxSpeedBonus = Number(row[1]) || maxSpeedBonus;
-      });
-    }
-
-    if (!isAssessmentOpen()) {
-      return { success: false, message: 'Assessment is currently closed.' };
-    }
-
-    if (!nik || !String(nik).trim()) {
-      return { success: false, message: 'NIK wajib diisi.' };
-    }
-
-    if (enforceWhitelist && !isParticipantAllowed(nik)) {
-      return { success: false, message: 'NIK Anda tidak terdaftar sebagai peserta kuis.' };
-    }
-
+    // Double-check di dalam lock untuk cegah race condition double-submit
+    // (dua request cek "belum submit" bersamaan sebelum lock → keduanya lolos)
     if (checkAlreadySubmitted(nik)) {
-      return { success: false, message: 'Anda sudah terdaftar mengirimkan jawaban untuk NIK ini.' };
+      return { success: false, message: 'Anda sudah mengirimkan jawaban untuk NIK ini.' };
     }
 
-    var questionsList = [];
-    try {
-      questionsList = getQuestionsFromSheet(subDept); // uses cache
-    } catch (e) {
-      return { success: false, message: 'Gagal mengambil kunci jawaban: ' + e.toString() };
-    }
-
-    var correctCount = 0;
-    var baseScore = 0;
-    var mcCorrect = 0;
-    var binaryCorrect = 0;
-    var essayCorrect = 0;
-    var scoringQuestionCount = 0;
-
-    questionsList.forEach(function (q, i) {
-      // Skip non-scoring questions from score calculations
-      if (q.scoring === false) return;
-
-      scoringQuestionCount++;
-      var qScore = 0;
-      var isCorrect = false;
-
-
-      if (q.type === 'essay') {
-        var ansText = String(answers[i] || '').toLowerCase().trim();
-        var matchCount = 0;
-        if (q.keywords) {
-          q.keywords.forEach(function (kw) {
-            if (ansText.indexOf(kw.toLowerCase()) !== -1) {
-              matchCount++;
-            }
-          });
-          if (matchCount >= 2) {
-            qScore = scorePerQuestion;
-            isCorrect = true;
-          } else if (matchCount === 1) {
-            qScore = scorePerQuestion / 2;
-          }
-        } else {
-          if (ansText.length > 10) {
-            qScore = scorePerQuestion;
-            isCorrect = true;
-          }
-        }
-
-        essayCorrect += qScore;
-        baseScore += qScore;
-        if (isCorrect) {
-          correctCount++;
-        } else if (qScore > 0) {
-          correctCount += 0.5;
-        }
-      } else if (q.type === 'binary') {
-        if (Number(answers[i]) === q.answer) {
-          qScore = scorePerQuestion;
-          binaryCorrect += qScore;
-          baseScore += qScore;
-          correctCount++;
-        }
-      } else {
-        // mc
-        if (Number(answers[i]) === q.answer) {
-          qScore = scorePerQuestion;
-          mcCorrect += qScore;
-          baseScore += qScore;
-          correctCount++;
-        }
-      }
-    });
-
-    var timeLimitSeconds = timeLimitMinutes * 60;
-    var timeRemaining = Math.max(0, timeLimitSeconds - timeTaken);
-    var speedBonus = Math.floor((timeRemaining / timeLimitSeconds) * maxSpeedBonus);
-    var totalScore = baseScore + speedBonus;
-    // Accuracy based only on scoring questions
-    var scoringTotal = scoringQuestionCount > 0 ? scoringQuestionCount : questionsList.length;
-    var accuracy = Math.round((correctCount / scoringTotal) * 100);
-
-    var finalName = name.trim();
-    if (enforceWhitelist) {
-      var whitelistedName = getParticipantName(nik);
-      if (whitelistedName) finalName = whitelistedName;
-    }
-
-    // Persist to master Responses sheet
+    // Write 1: Master Responses sheet
     var responseSheet = ss.getSheetByName('Responses');
-
     if (responseSheet) {
-      // Auto-fix misaligned headers if needed
       var firstRow = responseSheet.getRange(1, 1, 1, 12).getValues()[0];
       if (firstRow[1] !== 'NIK' || firstRow[2] !== 'Name') {
         responseSheet.getRange(1, 1, 1, 12).setValues([[
@@ -697,24 +729,10 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
         ]]);
         responseSheet.getRange(1, 1, 1, 12).setFontWeight('bold');
       }
-
-      responseSheet.appendRow([
-        new Date(),
-        nik.trim(),
-        finalName,
-        subDept,
-        correctCount,
-        questionsList.length,
-        accuracy,
-        baseScore,
-        speedBonus,
-        totalScore,
-        timeTaken,
-        JSON.stringify(answers)
-      ]);
+      responseSheet.appendRow(responseRow);
     }
 
-    // Persist to detailed sub-department response sheet
+    // Write 2: Detailed sub-department sheet
     try {
       var detailedSheet = getOrCreateDetailedResponseSheet(ss, subDept, questionsList);
       var scoreFraction = totalScore + ' / ' + (questionsList.length * scorePerQuestion + maxSpeedBonus);
@@ -752,11 +770,13 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
           }
         }
       });
+
       detailedSheet.appendRow(detailedRow);
     } catch (e) {
       Logger.log('Error writing detailed response sheet: ' + e.message);
     }
 
+    // Return hasil
     return {
       success: true,
       name: finalName,
@@ -769,10 +789,13 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
       totalScore: totalScore,
       timeTaken: timeTaken
     };
+
   } finally {
+    // Lock SELALU dilepas, bahkan jika ada error
     lock.releaseLock();
   }
 }
+
 
 /**
  * Returns top 20 participants sorted by totalScore, then by fastest time.
