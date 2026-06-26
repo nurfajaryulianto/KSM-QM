@@ -151,6 +151,8 @@ function doPost(e) {
       result = importParticipants(postData.password, postData.participants || postData.names);
     } else if (action === 'updateConfig') {
       result = updateConfig(postData.password, postData.config);
+    } else if (action === 'verifyAdmin') {
+      result = verifyAdmin(postData.password);
     } else {
       // Default: submit assessment
       result = submitAssessment(
@@ -424,7 +426,8 @@ function getQuestionsFromSheet(subDept) {
     var keywords = [];
     if (kwIdx !== undefined && row[kwIdx]) {
       keywords = String(row[kwIdx])
-        .split(',')
+        .replace(/[\xa0\u200b\u3000]+/g, ' ')
+        .split(/[,\n\r;]+/)
         .map(function(k) { return k.trim().toLowerCase(); })
         .filter(Boolean);
     }
@@ -591,7 +594,10 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
     var isCorrect = false;
 
     if (q.type === 'essay') {
-      var essayAns = String(userAnswer || '').toLowerCase().trim();
+      var essayAns = String(userAnswer || '')
+        .replace(/[\xa0\u200b\u3000]+/g, ' ')
+        .toLowerCase()
+        .trim();
 
       // Tentukan daftar keyword yang akan digunakan untuk penilaian
       // Priority 1: keyword eksplisit dari kolom 'Keywords'
@@ -607,7 +613,9 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
         var STOPWORDS = ['dan', 'atau', 'yang', 'untuk', 'dari', 'pada', 'adalah', 'dalam',
                          'dengan', 'ini', 'itu', 'oleh', 'jika', 'akan', 'dapat', 'tidak',
                          'ada', 'satu', 'agar', 'atas', 'bagi', 'hal', 'juga', 'nya'];
-        evalKeywords = String(q.answer).toLowerCase()
+        evalKeywords = String(q.answer)
+          .replace(/[\xa0\u200b\u3000]+/g, ' ')
+          .toLowerCase()
           .replace(/[^a-z0-9\s]/g, ' ')    // hapus tanda baca
           .split(/\s+/)
           .filter(function(w) {
@@ -631,8 +639,8 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
           // karena keyword ini otomatis, bukan kurasi manual
           requiredHits = 1;
         } else {
-          // Keyword mode: butuh minimal 50% keyword (ceiling)
-          requiredHits = Math.ceil(evalKeywords.length / 2);
+          // Keyword mode: cukup 1 kata kunci saja yang cocok (OR/alternative logic)
+          requiredHits = 1;
         }
 
         isCorrect = (essayAns.length > 0) && (hitCount >= requiredHits);

@@ -1186,7 +1186,11 @@ function loginAdmin() {
     // [SECURITY] Batasi panjang password input
     if (password.length > 128) { showError(errEl, 'Password terlalu panjang.'); return; }
 
-    fetch(GAS_URL + '?action=verifyAdmin&password=' + encodeURIComponent(password))
+    fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        body: JSON.stringify({ action: 'verifyAdmin', password: password })
+    })
         .then(function (res) { return res.json(); })
         .then(function (res) {
             if (res.success) {
@@ -1212,8 +1216,6 @@ function loginAdmin() {
                 document.getElementById('file-questions-excel').value = '';
                 document.getElementById('textarea-participants').value = '';
 
-                // Inisialisasi toggle Open/Close setelah admin berhasil login
-                initAdminToggle();
             } else {
                 showError(errEl, res.message || 'Incorrect password.');
                 // [SECURITY] Clear password field setelah gagal
@@ -1384,7 +1386,7 @@ function handleQuestionsUpload() {
                         answer = answerVal;
                     }
 
-                    var keywords = row['Keywords'] ? String(row['Keywords']).split(',').map(function (k) { return k.trim(); }).filter(Boolean) : [];
+                    var keywords = row['Keywords'] ? String(row['Keywords']).replace(/[\xa0\u200b\u3000]+/g, ' ').split(/[,\n\r;]+/).map(function (k) { return k.trim(); }).filter(Boolean) : [];
                     var imageUrl = String(row['Image URL'] || row['Image'] || '').trim();
                     // [SECURITY] Hanya izinkan HTTPS image URL
                     if (imageUrl && imageUrl.indexOf('https://') !== 0) imageUrl = '';
@@ -1732,56 +1734,5 @@ function loadImageWithFallback(imgEl, primarySrc, fileId) {
             imgEl.replaceWith(errNote);
         }
     };
-}
-
-/**
- * Inisialisasi toggle Open/Close di admin panel.
- * Dipanggil HANYA setelah admin berhasil login, bukan saat page load.
- * guard: cek typeof google supaya tidak crash saat dibuka lokal (non-GAS).
- */
-function initAdminToggle() {
-    const toggle = document.getElementById('assessmentToggle');
-    const label  = document.getElementById('toggleLabel');
-    if (!toggle || !label) return; // elemen belum ada di DOM
-
-    // Hanya jalankan jika running di dalam GAS web app
-    if (typeof google === 'undefined' || !google.script) return;
-
-    // Muat status terkini dari backend
-    google.script.run
-        .withSuccessHandler(function (info) {
-            if (!info) return;
-            toggle.checked = !!info.open;
-            label.textContent = info.open ? 'Open' : 'Closed';
-        })
-        .withFailureHandler(function (err) {
-            console.warn('initAdminToggle getAdminInfo error:', err);
-        })
-        .getAdminInfo();
-
-    // Hindari listener ganda jika initAdminToggle dipanggil lebih dari sekali
-    if (toggle._listenerAttached) return;
-    toggle._listenerAttached = true;
-
-    toggle.addEventListener('change', function () {
-        const fn = toggle.checked ? 'adminOpenAssessment' : 'adminCloseAssessment';
-        if (typeof google === 'undefined' || !google.script) return;
-        google.script.run
-            .withSuccessHandler(function (res) {
-                if (res && res.success) {
-                    label.textContent = toggle.checked ? 'Open' : 'Closed';
-                    showToast(res.message);
-                } else {
-                    // Rollback UI jika backend gagal
-                    toggle.checked = !toggle.checked;
-                    showToast('⚠️ ' + (res ? res.message : 'Gagal mengubah status kuis.'));
-                }
-            })
-            .withFailureHandler(function (err) {
-                toggle.checked = !toggle.checked;
-                showToast('⚠️ Error: ' + err.message);
-            })
-        [fn](); // dynamic GAS call
-    });
 }
 

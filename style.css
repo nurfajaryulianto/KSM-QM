@@ -1031,7 +1031,7 @@ input[type="datetime-local"]:focus {
 }
 
 input:checked+.slider {
-    background: #4caf50;
+    background: var(--purple-600);
 }
 
 input:checked+.slider:before {

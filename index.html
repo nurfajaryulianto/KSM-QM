@@ -254,11 +254,13 @@
 
                             <div class="admin-section">
                                 <h3>Kelola Partisipan</h3>
-                                <label
-                                    style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; margin-bottom: 1rem;">
-                                    <input type="checkbox" id="check-enforce-whitelist" /> Batasi Kuis Hanya untuk
-                                    Partisipan Terdaftar
-                                </label>
+                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 1rem; background: rgba(0,0,0,0.02); padding: 10px 12px; border-radius: var(--radius-sm); border: 1.5px dashed rgba(0,0,0,0.05);">
+                                    <span style="font-size: 13.5px; font-weight: 500; color: var(--gray-800);">Batasi Kuis Hanya untuk Partisipan Terdaftar</span>
+                                    <label class="switch">
+                                        <input type="checkbox" id="check-enforce-whitelist" />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
                                 <button class="btn btn-primary btn-full" onclick="saveParticipantSettings()"
                                     style="margin-top: 0; margin-bottom: 1rem;">Simpan Pengaturan Whitelist</button>
                             </div>
@@ -288,10 +290,13 @@
 
                             <div class="admin-section">
                                 <h3>Pengaturan Assessment</h3>
-                                <label
-                                    style="display: flex; align-items: center; gap: 8px; font-size: 14px; cursor: pointer; margin-bottom: 1rem;">
-                                    <input type="checkbox" id="check-assessment-open" /> Buka Kuis Secara Manual
-                                </label>
+                                <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 1rem; background: rgba(0,0,0,0.02); padding: 10px 12px; border-radius: var(--radius-sm); border: 1.5px dashed rgba(0,0,0,0.05);">
+                                    <span style="font-size: 13.5px; font-weight: 500; color: var(--gray-800);">Buka Kuis Secara Manual</span>
+                                    <label class="switch">
+                                        <input type="checkbox" id="check-assessment-open" />
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
 
                                 <p class="label">Judul Assessment</p>
                                 <input type="text" id="input-assessment-title" placeholder="KSM Assessment Title"
