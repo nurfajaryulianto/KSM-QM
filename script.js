@@ -628,13 +628,47 @@ function submitNow(isTimeout) {
         return (q && q.type === 'essay') ? sanitizeEssayAnswer(a) : a;
     });
 
+    // Buat representasi answers_detail berbentuk JSON
+    var answersDetail = {};
+    config.questions.forEach(function (q, idx) {
+        var ans = sanitizedAnswers[idx];
+        if (q.type === 'essay') {
+            answersDetail['Q' + q.id] = ans || '';
+        } else {
+            var optIdx = parseInt(ans);
+            if (optIdx >= 0 && q.options && q.options[optIdx] !== undefined) {
+                answersDetail['Q' + q.id] = q.options[optIdx];
+            } else {
+                answersDetail['Q' + q.id] = '(tidak dijawab)';
+            }
+        }
+    });
+
     var requestId = generateRequestId();
-    var payload = {
-        nik: myNik, name: myName, subDept: mySubDept,
-        answers: sanitizedAnswers, timeTaken: timeTaken, requestId: requestId
+    
+    // Baris data untuk disimpan di Supabase
+    var row = {
+        submitted_at: new Date().toISOString(),
+        nik: String(myNik).trim(),
+        name: String(myName).trim(),
+        sub_department: mySubDept,
+        correct_count: null, // Diisi null untuk penilaian manual nanti
+        total_questions: config.questions.length,
+        accuracy_pct: null, // Diisi null untuk penilaian manual nanti
+        base_score: 0,
+        speed_bonus: 0,
+        total_score: null, // Diisi null untuk penilaian manual nanti
+        time_taken_s: timeTaken,
+        mc_score: 0,
+        binary_score: 0,
+        essay_score: 0,
+        answers_detail: answersDetail
     };
 
-    addPendingSubmission(payload);
+    // Salin ke payload lokal untuk queue dengan menyertakan requestId
+    var localPayload = Object.assign({ requestId: requestId }, row);
+
+    addPendingSubmission(localPayload);
     clearQuizDraft();
 
     showScreen('screen-loading');
@@ -642,7 +676,7 @@ function submitNow(isTimeout) {
         '<div class="loading"><div class="spin" style="font-size:28px">⟳</div><p style="margin-top:1rem">' +
         (isTimeout ? 'Waktu habis! Mengirimkan jawaban otomatis...' : 'Mengirimkan jawaban Anda...') + '</p></div>';
 
-    submitWithRetry(payload)
+    submitWithRetry(localPayload)
         .then(function (res) {
             removePendingSubmission(requestId);
             isSubmitting = false;
@@ -664,34 +698,52 @@ function generateRequestId() {
 //  SUBMIT WITH RETRY — Exponential Backoff
 // ============================================================
 
-function submitWithRetry(payload) {
+function submitWithRetry(localPayload) {
     var MAX_RETRY = 3;
     var BASE_DELAY = 2000;
-    var RETRY_MESSAGES = ['server sedang sibuk', 'gagal mendapatkan giliran', 'coba lagi'];
+    
+    // Buat salinan payload dan hapus requestId agar tidak dikirim ke Supabase
+    var row = Object.assign({}, localPayload);
+    delete row.requestId;
 
     function attempt(attemptNum, resolve, reject) {
         if (attemptNum > 1) showSubmitStatus('Mencoba ulang... (' + attemptNum + '/' + MAX_RETRY + ')');
 
-        fetch(GAS_URL, {
+        fetch(SUPABASE_URL + '/rest/v1/assessment_responses', {
             method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: JSON.stringify(payload)
+            headers: {
+                'apikey': SUPABASE_ANON_KEY,
+                'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
+            },
+            body: JSON.stringify(row)
         })
-            .then(function (res) { return res.json(); })
-            .then(function (data) {
-                if (data.success === true) { resolve(data); return; }
-
-                var msg = (data.message || '').toLowerCase();
-                var shouldRetry = RETRY_MESSAGES.some(function (kw) { return msg.indexOf(kw) !== -1; });
-
-                if (!shouldRetry || attemptNum >= MAX_RETRY) { resolve(data); return; }
-
-                var delay = BASE_DELAY * Math.pow(2, attemptNum - 1);
-                console.log('[Retry ' + attemptNum + '] GAS sibuk, coba ulang dalam ' + (delay / 1000) + 's');
-                sleep(delay).then(function () { attempt(attemptNum + 1, resolve, reject); });
+            .then(function (res) {
+                if (res.ok) {
+                    return res.json().then(function (data) {
+                        // Bungkus response agar sesuai ekspektasi onSubmitResult
+                        resolve({
+                            success: true,
+                            name: row.name,
+                            isManual: true, // flag bahwa ini dinilai secara manual
+                            correctCount: 0,
+                            totalQuestions: row.total_questions,
+                            accuracy: 0,
+                            baseScore: 0,
+                            speedBonus: 0,
+                            totalScore: null,
+                            timeTaken: row.time_taken_s
+                        });
+                    });
+                } else {
+                    return res.text().then(function (errText) {
+                        throw new Error('Supabase Error: ' + errText);
+                    });
+                }
             })
             .catch(function (err) {
-                console.error('[Retry ' + attemptNum + '] Network error:', err.message);
+                console.error('[Retry ' + attemptNum + '] Error:', err.message);
                 if (attemptNum < MAX_RETRY) {
                     sleep(BASE_DELAY * Math.pow(2, attemptNum - 1))
                         .then(function () { attempt(attemptNum + 1, resolve, reject); });
@@ -800,30 +852,80 @@ function onSubmitResult(res) {
 
 function renderResult(res) {
     document.getElementById('result-name-hero').textContent = 'Kerja Bagus, ' + escHtml(res.name) + '!';
-    document.getElementById('res-total-score').textContent = res.accuracy + '%';
-    document.getElementById('res-correct').textContent = res.correctCount + '/' + res.totalQuestions;
-    document.getElementById('res-accuracy').textContent = res.accuracy + '%';
-    document.getElementById('res-base').textContent = res.baseScore;
-    document.getElementById('res-time').textContent = formatTime(res.timeTaken);
-
-    if (res.speedBonus > 0) {
-        document.getElementById('res-bonus').style.display = 'flex';
-        document.getElementById('res-bonus-val').textContent = res.speedBonus;
-        document.getElementById('res-time-val').textContent = formatTime(res.timeTaken);
-    }
-
+    
+    var scoreCircle = document.querySelector('.score-circle');
     var badge = document.getElementById('res-badge');
     var remedialEl = document.getElementById('res-remedial');
-    var pct = res.accuracy;
+    var bonusEl = document.getElementById('res-bonus');
 
-    if (pct >= 90) {
-        badge.textContent = pct === 100 ? '🏅 Nilai Sempurna!' : '✓ Lulus';
-        badge.className = pct === 100 ? 'result-badge badge-gold' : 'result-badge badge-pass';
-        if (remedialEl) remedialEl.style.display = 'none';
+    if (res.isManual || res.totalScore === null) {
+        // Mode Penilaian Manual
+        if (scoreCircle) {
+            scoreCircle.innerHTML = '<span class="score-big" style="font-size:36px;color:var(--purple-600);">✓</span><span class="score-sub">Terkirim</span>';
+        }
+        badge.textContent = 'Menunggu Koreksi';
+        badge.className = 'result-badge';
+        badge.style.background = 'var(--purple-50)';
+        badge.style.color = 'var(--purple-800)';
+        badge.style.borderColor = 'var(--purple-150)';
+
+        if (remedialEl) {
+            remedialEl.textContent = 'Jawaban Anda telah berhasil disimpan. Hasil penilaian akhir akan diumumkan setelah proses koreksi manual oleh administrator selesai.';
+            remedialEl.style.display = 'block';
+            remedialEl.style.background = 'var(--purple-50)';
+            remedialEl.style.borderColor = 'var(--purple-100)';
+            remedialEl.style.color = 'var(--purple-800)';
+        }
+
+        if (bonusEl) bonusEl.style.display = 'none';
+
+        document.getElementById('res-correct').textContent = '-';
+        document.getElementById('res-accuracy').textContent = '-';
+        document.getElementById('res-base').textContent = '-';
+        document.getElementById('res-time').textContent = formatTime(res.timeTaken);
     } else {
-        badge.textContent = '△ Remedial';
-        badge.className = 'result-badge badge-fail';
-        if (remedialEl) remedialEl.style.display = 'block';
+        // Mode Penilaian Otomatis
+        if (scoreCircle) {
+            scoreCircle.innerHTML = '<span class="score-big" id="res-total-score">' + Number(res.accuracy) + '%</span><span class="score-sub">Score Anda</span>';
+        }
+        document.getElementById('res-correct').textContent = res.correctCount + '/' + res.totalQuestions;
+        document.getElementById('res-accuracy').textContent = res.accuracy + '%';
+        document.getElementById('res-base').textContent = res.baseScore;
+        document.getElementById('res-time').textContent = formatTime(res.timeTaken);
+
+        if (res.speedBonus > 0) {
+            if (bonusEl) {
+                bonusEl.style.display = 'flex';
+                document.getElementById('res-bonus-val').textContent = res.speedBonus;
+                document.getElementById('res-time-val').textContent = formatTime(res.timeTaken);
+            }
+        } else {
+            if (bonusEl) bonusEl.style.display = 'none';
+        }
+
+        var pct = res.accuracy;
+        if (pct >= 90) {
+            badge.textContent = pct === 100 ? '🏅 Nilai Sempurna!' : '✓ Lulus';
+            badge.className = pct === 100 ? 'result-badge badge-gold' : 'result-badge badge-pass';
+            badge.style = ''; // Reset inline style
+            if (remedialEl) {
+                remedialEl.style.display = 'none';
+                remedialEl.style.background = '';
+                remedialEl.style.borderColor = '';
+                remedialEl.style.color = '';
+            }
+        } else {
+            badge.textContent = '△ Remedial';
+            badge.className = 'result-badge badge-fail';
+            badge.style = ''; // Reset inline style
+            if (remedialEl) {
+                remedialEl.textContent = 'Anda akan melaksanakan remedial KSM. Pelaksanaan remedial akan diinformasikan lebih lanjut. Terima kasih sudah melaksanakan KSM (^__)';
+                remedialEl.style.display = 'block';
+                remedialEl.style.background = '';
+                remedialEl.style.borderColor = '';
+                remedialEl.style.color = '';
+            }
+        }
     }
 }
 
@@ -834,9 +936,38 @@ function renderResult(res) {
 function loadLeaderboard() {
     document.getElementById('lb-content').innerHTML =
         '<div class="loading"><span class="spin">⟳</span></div>';
-    fetch(GAS_URL + '?action=getLeaderboard')
-        .then(function (res) { return res.json(); })
-        .then(renderLeaderboard)
+    
+    var url = SUPABASE_URL + '/rest/v1/assessment_responses'
+        + '?select=name,sub_department,correct_count,total_questions,accuracy_pct,base_score,speed_bonus,total_score,time_taken_s'
+        + '&order=total_score.desc.nullslast,time_taken_s.asc'
+        + '&limit=20';
+
+    fetch(url, {
+        headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': 'Bearer ' + SUPABASE_ANON_KEY
+        }
+    })
+        .then(function (res) {
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            return res.json();
+        })
+        .then(function (data) {
+            var leaderboardData = data.map(function (r) {
+                return {
+                    name:       r.name,
+                    subDept:    r.sub_department,
+                    correct:    r.correct_count !== null ? r.correct_count : 0,
+                    total:      r.total_questions,
+                    accuracy:   r.accuracy_pct !== null ? r.accuracy_pct : 0,
+                    baseScore:  r.base_score,
+                    speedBonus: r.speed_bonus,
+                    totalScore: r.total_score !== null ? r.total_score : 0,
+                    timeTaken:  r.time_taken_s
+                };
+            });
+            renderLeaderboard(leaderboardData);
+        })
         .catch(function (e) {
             document.getElementById('lb-content').innerHTML =
                 '<p class="error-msg">Failed to load: ' + escHtml(e.message) + '</p>';
