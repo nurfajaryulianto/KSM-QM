@@ -1,6 +1,11 @@
 -- ============================================================
 -- SQL SCRIPT FOR SUPABASE AUTO-GRADING SYSTEM
 -- Run this script in your Supabase SQL Editor.
+--
+-- Essay Grading Rules:
+--   >= 2 keywords matched → Full credit (1.0)
+--   == 1 keyword matched  → Partial credit (0.5 poin)
+--   == 0 keywords matched → No credit (0)
 -- ============================================================
 
 -- 1. Create quiz_questions table
@@ -27,28 +32,28 @@ DECLARE
     q_record RECORD;
     user_ans TEXT;
     is_correct BOOLEAN;
-    correct_count INT := 0;
+    correct_count NUMERIC := 0;      -- NUMERIC to support partial credit (0.5)
     total_scoring INT := 0;
     mc_correct INT := 0;
     binary_correct INT := 0;
-    essay_correct INT := 0;
+    essay_partial_score NUMERIC := 0; -- Accumulates 0, 0.5, or 1.0 per essay question
     
     -- Scoring configuration
-    score_per_question INT := 10;
+    score_per_question NUMERIC := 10;
     max_speed_bonus INT := 20;
     time_limit_minutes INT := 10;
     time_limit_s INT;
     speed_bonus INT := 0;
-    base_score INT := 0;
-    total_score INT := 0;
-    accuracy INT := 0;
+    base_score NUMERIC := 0;
+    total_score NUMERIC := 0;
+    accuracy NUMERIC := 0;
     
     -- Essay grading variables
     keyword_item TEXT;
     hit_count INT := 0;
-    required_hits INT := 0;
     keywords_len INT := 0;
     sanitized_essay TEXT;
+    essay_credit NUMERIC := 0;  -- credit for this essay: 0, 0.5, or 1.0
     
     -- Updated answers detail
     updated_answers_detail JSONB := '{}'::jsonb;
@@ -66,6 +71,7 @@ BEGIN
         -- Extract user answer from jsonb
         user_ans := NEW.answers_detail->>('Q' || q_record.question_number);
         is_correct := FALSE;
+        essay_credit := 0;
 
         IF q_record.scoring = TRUE THEN
             total_scoring := total_scoring + 1;
@@ -84,26 +90,46 @@ BEGIN
                             hit_count := hit_count + 1;
                         END IF;
                     END LOOP;
-                    required_hits := ceil(keywords_len / 2.0);
-                    IF hit_count >= required_hits THEN
+
+                    -- ── ATURAN PENILAIAN ESSAY ──────────────────────────────────────
+                    -- >= 2 keyword cocok → skor penuh (1.0)
+                    -- == 1 keyword cocok → skor parsial (0.5)
+                    -- == 0 keyword cocok → tidak ada skor (0)
+                    -- ───────────────────────────────────────────────────────────────
+                    IF hit_count >= 2 THEN
+                        essay_credit := 1.0;
                         is_correct := TRUE;
+                    ELSIF hit_count = 1 THEN
+                        essay_credit := 0.5;
+                        is_correct := TRUE; -- dianggap benar sebagian
+                    ELSE
+                        essay_credit := 0;
+                        is_correct := FALSE;
                     END IF;
+
                 ELSE
-                    -- If no keywords are set, mark correct if answer is at least 10 chars long
+                    -- Jika tidak ada keyword yang ditentukan:
+                    -- Berikan skor penuh jika jawaban minimal 10 karakter
                     IF length(sanitized_essay) >= 10 THEN
+                        essay_credit := 1.0;
                         is_correct := TRUE;
+                    ELSE
+                        essay_credit := 0;
+                        is_correct := FALSE;
                     END IF;
                 END IF;
 
-                IF q_record.scoring = TRUE AND is_correct THEN
-                    essay_correct := essay_correct + 1;
+                IF q_record.scoring = TRUE THEN
+                    essay_partial_score := essay_partial_score + essay_credit;
                 END IF;
 
                 -- Generate detail review tag for admin
                 IF q_record.scoring = FALSE THEN
                     correct_tag := user_ans || ' [NS]';
-                ELSIF is_correct THEN
-                    correct_tag := user_ans || ' (' || hit_count || '/' || keywords_len || ' kw ✓)';
+                ELSIF essay_credit >= 1.0 THEN
+                    correct_tag := user_ans || ' (' || hit_count || '/' || keywords_len || ' kw ✓ full)';
+                ELSIF essay_credit = 0.5 THEN
+                    correct_tag := user_ans || ' (' || hit_count || '/' || keywords_len || ' kw ½ partial)';
                 ELSE
                     correct_tag := user_ans || ' (' || hit_count || '/' || keywords_len || ' kw ✗)';
                 END IF;
@@ -141,8 +167,17 @@ BEGIN
             END IF;
         END IF;
 
-        IF q_record.scoring = TRUE AND is_correct THEN
-            correct_count := correct_count + 1;
+        -- Accumulate correct_count
+        -- For MC/Binary: +1 if correct
+        -- For Essay:     +essay_credit (0, 0.5, or 1.0) — stored in essay_partial_score above
+        IF q_record.scoring = TRUE THEN
+            IF q_record.question_type = 'essay' THEN
+                -- Essay credit already accumulated in essay_partial_score above.
+                -- We still add the credit to correct_count for accuracy calculation.
+                correct_count := correct_count + essay_credit;
+            ELSIF is_correct THEN
+                correct_count := correct_count + 1;
+            END IF;
         END IF;
 
         -- Store review tag in answers_detail
@@ -156,7 +191,7 @@ BEGIN
         accuracy := 0;
     END IF;
 
-    base_score := correct_count * score_per_question;
+    base_score := round(correct_count * score_per_question);
     
     -- Speed bonus calculation
     IF NEW.time_taken_s < time_limit_s AND max_speed_bonus > 0 THEN
@@ -168,7 +203,7 @@ BEGIN
     total_score := base_score + speed_bonus;
 
     -- 4. Fill in the newly inserted row fields
-    NEW.correct_count := correct_count;
+    NEW.correct_count := floor(correct_count);  -- int: round down for display
     NEW.total_questions := total_scoring;
     NEW.accuracy_pct := accuracy;
     NEW.base_score := base_score;
@@ -176,7 +211,7 @@ BEGIN
     NEW.total_score := total_score;
     NEW.mc_score := mc_correct * score_per_question;
     NEW.binary_score := binary_correct * score_per_question;
-    NEW.essay_score := essay_correct * score_per_question;
+    NEW.essay_score := round(essay_partial_score * score_per_question);
     NEW.answers_detail := updated_answers_detail;
 
     RETURN NEW;
