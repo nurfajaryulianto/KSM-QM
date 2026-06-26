@@ -858,75 +858,46 @@ function renderResult(res) {
     var remedialEl = document.getElementById('res-remedial');
     var bonusEl = document.getElementById('res-bonus');
 
-    var hasEssay = config && config.questions && config.questions.some(function (q) { return q.type === 'essay'; });
+    // Mode Penilaian Otomatis (Semua tipe soal termasuk Essay dinilai secara instan)
+    if (scoreCircle) {
+        scoreCircle.innerHTML = '<span class="score-big" id="res-total-score">' + Number(res.accuracy) + '%</span><span class="score-sub">Score Anda</span>';
+    }
+    document.getElementById('res-correct').textContent = res.correctCount + '/' + res.totalQuestions;
+    document.getElementById('res-accuracy').textContent = res.accuracy + '%';
+    document.getElementById('res-base').textContent = res.baseScore;
+    document.getElementById('res-time').textContent = formatTime(res.timeTaken);
 
-    if (hasEssay) {
-        // Mode Penilaian Manual / Campuran (karena ada Essay)
-        if (scoreCircle) {
-            scoreCircle.innerHTML = '<span class="score-big" style="font-size:32px;color:var(--purple-600);">' + Number(res.accuracy) + '%</span><span class="score-sub">Skor Sementara</span>';
+    if (res.speedBonus > 0) {
+        if (bonusEl) {
+            bonusEl.style.display = 'flex';
+            document.getElementById('res-bonus-val').textContent = res.speedBonus;
+            document.getElementById('res-time-val').textContent = formatTime(res.timeTaken);
         }
-        badge.textContent = 'Menunggu Koreksi';
-        badge.className = 'result-badge';
-        badge.style.background = 'var(--purple-50)';
-        badge.style.color = 'var(--purple-800)';
-        badge.style.borderColor = 'var(--purple-150)';
-
-        if (remedialEl) {
-            remedialEl.textContent = 'Jawaban Anda telah berhasil disimpan. Soal Pilihan Ganda & Benar/Salah telah dinilai secara otomatis. Hasil akhir akan diumumkan setelah proses koreksi manual soal Essay oleh administrator selesai.';
-            remedialEl.style.display = 'block';
-            remedialEl.style.background = 'var(--purple-50)';
-            remedialEl.style.borderColor = 'var(--purple-100)';
-            remedialEl.style.color = 'var(--purple-800)';
-        }
-
-        if (bonusEl) bonusEl.style.display = 'none';
-
-        document.getElementById('res-correct').textContent = res.correctCount + '/' + res.totalQuestions;
-        document.getElementById('res-accuracy').textContent = res.accuracy + '%';
-        document.getElementById('res-base').textContent = res.baseScore;
-        document.getElementById('res-time').textContent = formatTime(res.timeTaken);
     } else {
-        // Mode Penilaian Otomatis (Tidak ada Essay)
-        if (scoreCircle) {
-            scoreCircle.innerHTML = '<span class="score-big" id="res-total-score">' + Number(res.accuracy) + '%</span><span class="score-sub">Score Anda</span>';
-        }
-        document.getElementById('res-correct').textContent = res.correctCount + '/' + res.totalQuestions;
-        document.getElementById('res-accuracy').textContent = res.accuracy + '%';
-        document.getElementById('res-base').textContent = res.baseScore;
-        document.getElementById('res-time').textContent = formatTime(res.timeTaken);
+        if (bonusEl) bonusEl.style.display = 'none';
+    }
 
-        if (res.speedBonus > 0) {
-            if (bonusEl) {
-                bonusEl.style.display = 'flex';
-                document.getElementById('res-bonus-val').textContent = res.speedBonus;
-                document.getElementById('res-time-val').textContent = formatTime(res.timeTaken);
-            }
-        } else {
-            if (bonusEl) bonusEl.style.display = 'none';
+    var pct = res.accuracy;
+    if (pct >= 90) {
+        badge.textContent = pct === 100 ? '🏅 Nilai Sempurna!' : '✓ Lulus';
+        badge.className = pct === 100 ? 'result-badge badge-gold' : 'result-badge badge-pass';
+        badge.style = ''; // Reset inline style
+        if (remedialEl) {
+            remedialEl.style.display = 'none';
+            remedialEl.style.background = '';
+            remedialEl.style.borderColor = '';
+            remedialEl.style.color = '';
         }
-
-        var pct = res.accuracy;
-        if (pct >= 90) {
-            badge.textContent = pct === 100 ? '🏅 Nilai Sempurna!' : '✓ Lulus';
-            badge.className = pct === 100 ? 'result-badge badge-gold' : 'result-badge badge-pass';
-            badge.style = ''; // Reset inline style
-            if (remedialEl) {
-                remedialEl.style.display = 'none';
-                remedialEl.style.background = '';
-                remedialEl.style.borderColor = '';
-                remedialEl.style.color = '';
-            }
-        } else {
-            badge.textContent = '△ Remedial';
-            badge.className = 'result-badge badge-fail';
-            badge.style = ''; // Reset inline style
-            if (remedialEl) {
-                remedialEl.textContent = 'Anda akan melaksanakan remedial KSM. Pelaksanaan remedial akan diinformasikan lebih lanjut. Terima kasih sudah melaksanakan KSM (^_~)';
-                remedialEl.style.display = 'block';
-                remedialEl.style.background = '';
-                remedialEl.style.borderColor = '';
-                remedialEl.style.color = '';
-            }
+    } else {
+        badge.textContent = '△ Remedial';
+        badge.className = 'result-badge badge-fail';
+        badge.style = ''; // Reset inline style
+        if (remedialEl) {
+            remedialEl.textContent = 'Anda akan melaksanakan remedial KSM. Pelaksanaan remedial akan diinformasikan lebih lanjut. Terima kasih sudah melaksanakan KSM (^_~)';
+            remedialEl.style.display = 'block';
+            remedialEl.style.background = '';
+            remedialEl.style.borderColor = '';
+            remedialEl.style.color = '';
         }
     }
 }
