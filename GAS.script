@@ -347,21 +347,30 @@ function getQuestionsFromSheet(subDept) {
   var colIndices = {};
   headers.forEach(function(h, idx) { colIndices[h] = idx; });
 
+  // ── Precompute column indices (hanya sekali, bukan tiap baris) ──────────
+  var titleIdx   = colIndices['Title']    !== undefined ? colIndices['Title']    : 0;
+  var diffIdx    = colIndices['Difficulty Level'];
+  var typeIdx    = colIndices['Type Questions (Multiple Choice, Essay, Binary)'] !== undefined
+                     ? colIndices['Type Questions (Multiple Choice, Essay, Binary)']
+                     : colIndices['Type'];
+  var ansIdx     = colIndices['Answer'];
+  var scoringIdx = colIndices['Scoring'];
+  var imgIdx     = colIndices['Image URL'] !== undefined ? colIndices['Image URL'] : colIndices['Image'];
+  var qkIdx      = colIndices['Question Knowledge'] !== undefined ? colIndices['Question Knowledge']
+                   : colIndices['QuestionKnowledge'];
+
+  // Keywords: coba beberapa nama kolom yang mungkin dipakai user
+  var kwIdx = colIndices['Keywords'] !== undefined ? colIndices['Keywords']
+              : colIndices['Keyword'] !== undefined ? colIndices['Keyword']
+              : colIndices['Key Words'] !== undefined ? colIndices['Key Words']
+              : undefined;
+  // ────────────────────────────────────────────────────────────────────────
+
   var choiceLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
   var questions     = [];
 
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
-
-    var titleIdx   = colIndices['Title']    !== undefined ? colIndices['Title']    : 0;
-    var diffIdx    = colIndices['Difficulty Level'];
-    var typeIdx    = colIndices['Type Questions (Multiple Choice, Essay, Binary)'] !== undefined
-                       ? colIndices['Type Questions (Multiple Choice, Essay, Binary)']
-                       : colIndices['Type'];
-    var ansIdx     = colIndices['Answer'];
-    var kwIdx      = colIndices['Keywords'];
-    var imgIdx     = colIndices['Image URL'] !== undefined ? colIndices['Image URL'] : colIndices['Image'];
-    var scoringIdx = colIndices['Scoring'];
 
     var title = String(row[titleIdx]).trim();
     if (!title) continue;
@@ -583,15 +592,64 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
 
     if (q.type === 'essay') {
       var essayAns = String(userAnswer || '').toLowerCase().trim();
+
+      // Tentukan daftar keyword yang akan digunakan untuk penilaian
+      // Priority 1: keyword eksplisit dari kolom 'Keywords'
+      // Priority 2: fallback — ekstrak kata bermakna dari teks jawaban model (q.answer)
+      var evalKeywords = [];
+      var usingFallback = false;
+
       if (q.keywords && q.keywords.length > 0) {
-        var hits = q.keywords.filter(function(kw) {
-          return essayAns.indexOf(kw.toLowerCase()) !== -1;
-        }).length;
-        isCorrect = hits >= Math.ceil(q.keywords.length / 2);
+        evalKeywords = q.keywords; // sudah lowercase dari getQuestionsFromSheet
+      } else if (q.answer && String(q.answer).trim()) {
+        // Fallback: pecah teks jawaban model jadi kata-kata, filter kata pendek (<3 huruf)
+        // dan kata umum (stopwords sederhana)
+        var STOPWORDS = ['dan', 'atau', 'yang', 'untuk', 'dari', 'pada', 'adalah', 'dalam',
+                         'dengan', 'ini', 'itu', 'oleh', 'jika', 'akan', 'dapat', 'tidak',
+                         'ada', 'satu', 'agar', 'atas', 'bagi', 'hal', 'juga', 'nya'];
+        evalKeywords = String(q.answer).toLowerCase()
+          .replace(/[^a-z0-9\s]/g, ' ')    // hapus tanda baca
+          .split(/\s+/)
+          .filter(function(w) {
+            return w.length >= 3 && STOPWORDS.indexOf(w) === -1;
+          });
+        // Deduplikasi
+        evalKeywords = evalKeywords.filter(function(w, i, arr) { return arr.indexOf(w) === i; });
+        usingFallback = true;
       }
+
+      var hitCount = 0;
+      var requiredHits = 0;
+
+      if (evalKeywords.length > 0) {
+        hitCount = evalKeywords.filter(function(kw) {
+          return essayAns.indexOf(kw) !== -1;
+        }).length;
+
+        if (usingFallback) {
+          // Fallback mode: lebih longgar — hanya perlu 1 kata kunci ditemukan
+          // karena keyword ini otomatis, bukan kurasi manual
+          requiredHits = 1;
+        } else {
+          // Keyword mode: butuh minimal 50% keyword (ceiling)
+          requiredHits = Math.ceil(evalKeywords.length / 2);
+        }
+
+        isCorrect = (essayAns.length > 0) && (hitCount >= requiredHits);
+      } else {
+        // Tidak ada keyword sama sekali dan answer kosong:
+        // Berikan nilai jika user mengisi jawaban (minimal 10 karakter)
+        isCorrect = essayAns.length >= 10;
+      }
+
       if (isScoring && isCorrect) essayCorrect++;
+
+      // Detail: tampilkan hit count di answersDetail untuk review admin
+      var kwInfo = evalKeywords.length > 0
+        ? ' (' + hitCount + '/' + evalKeywords.length + ' kw' + (isCorrect ? ' ✓' : ' ✗') + ')'
+        : (isCorrect ? ' (✓)' : ' (✗)');
       answersDetail['Q' + q.id] = String(userAnswer || '') +
-        (isScoring ? (' (' + (isCorrect ? '✓' : '✗') + ')') : ' [NS]');
+        (isScoring ? kwInfo : ' [NS]');
 
     } else {
       var userNum    = parseInt(userAnswer, 10);
