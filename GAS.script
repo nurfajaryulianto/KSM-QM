@@ -5,22 +5,66 @@
 //  Setup: Run setupSheets() once first
 // ============================================================
 
-var SPREADSHEET_ID = 'https://docs.google.com/spreadsheets/d/1M68f4e-lxFmPyj0nPCgFv4qPFe8qvOcMAjy_O_yVLtc/edit?gid=0#gid=0'; // <-- Replace with your Spreadsheet ID or full URL
+// ============================================================
+// SUPABASE CONFIG
+// ============================================================
+var SUPABASE_URL = 'https://zbdynfmrxhnxzktztniy.supabase.co';
+var SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpiZHluZm1yeGhueHprdHp0bml5Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4MjM3MzI3OSwiZXhwIjoyMDk3OTQ5Mjc5fQ.9jnqCOmDUfnLfb0k9t-kXJggbQsV53KGsBxbfS0bdQs';
+
+/**
+ * Insert response ke Supabase via REST API.
+ * Service key di GAS aman — tidak terekspos ke browser.
+ */
+function insertToSupabase(payload) {
+  var url = SUPABASE_URL + '/rest/v1/assessment_responses';
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    headers: {
+      'apikey': SUPABASE_SERVICE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY,
+      'Prefer': 'return=minimal'
+    },
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+  return UrlFetchApp.fetch(url, options);
+}
+
+/**
+ * Cek apakah NIK sudah submit — query Supabase, bukan Sheets.
+ * NOTE: Tidak di-cache — harus selalu real-time untuk mencegah double submit.
+ */
+function checkAlreadySubmitted(nik) {
+  var url = SUPABASE_URL + '/rest/v1/assessment_responses'
+    + '?nik=eq.' + encodeURIComponent(String(nik).trim())
+    + '&select=nik&limit=1';
+  var options = {
+    method: 'get',
+    headers: {
+      'apikey': SUPABASE_SERVICE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY
+    },
+    muteHttpExceptions: true
+  };
+  var res = UrlFetchApp.fetch(url, options);
+  var data = JSON.parse(res.getContentText());
+  return Array.isArray(data) && data.length > 0;
+}
+
+var SPREADSHEET_ID = 'https://docs.google.com/spreadsheets/d/1M68f4e-lxFmPyj0nPCgFv4qPFe8qvOcMAjy_O_yVLtc/edit?gid=0#gid=0';
 
 // Fallback defaults in case sheet config is missing
 var DEFAULT_TIME_LIMIT_MINUTES = 10;
 var DEFAULT_SCORE_PER_QUESTION = 10;
-var DEFAULT_MAX_SPEED_BONUS = 20;
+var DEFAULT_MAX_SPEED_BONUS    = 20;
 
 // ============================================================
 //  CACHE HELPERS — Reduces Sheet reads for high-concurrency
 // ============================================================
 
-var CACHE_TTL = 300; // Cache TTL: 5 minutes (in seconds)
+var CACHE_TTL = 300; // 5 minutes
 
-/**
- * Get a cached value by key. Returns null if not found or expired.
- */
 function getCached(key) {
   try {
     var cache = CacheService.getScriptCache();
@@ -31,25 +75,16 @@ function getCached(key) {
   }
 }
 
-/**
- * Store a value in cache. Silently skips if value exceeds 100KB limit.
- */
 function setCached(key, data) {
   try {
     var cache = CacheService.getScriptCache();
     var str = JSON.stringify(data);
-    // CacheService max value size is 100KB per key
     if (str.length < 100000) {
       cache.put(key, str, CACHE_TTL);
     }
-  } catch (e) {
-    // Silently fail — cache is optional, not critical
-  }
+  } catch (e) {}
 }
 
-/**
- * Invalidate (remove) a specific cache key.
- */
 function clearCache(key) {
   try {
     CacheService.getScriptCache().remove(key);
@@ -60,26 +95,16 @@ function clearCache(key) {
 //  SPREADSHEET HELPER
 // ============================================================
 
-/**
- * Helper to open the spreadsheet safely, supporting both direct ID, full URL,
- * and container-bound spreadsheet access.
- */
 function getSpreadsheet() {
   try {
     var activeSS = SpreadsheetApp.getActiveSpreadsheet();
-    if (activeSS) {
-      return activeSS;
-    }
-  } catch (e) {
-    // Standalone script — fall through
-  }
+    if (activeSS) return activeSS;
+  } catch (e) {}
 
   var id = SPREADSHEET_ID.trim();
   if (id.indexOf('http') === 0) {
     var matches = id.match(/\/d\/([a-zA-Z0-9-_]+)/);
-    if (matches && matches[1]) {
-      id = matches[1];
-    }
+    if (matches && matches[1]) id = matches[1];
   }
   return SpreadsheetApp.openById(id);
 }
@@ -96,15 +121,11 @@ function doGet(e) {
     if (action === 'getConfig') {
       result = getConfig();
     } else if (action === 'startSession') {
-      var nik = e.parameter.nik;
-      var name = e.parameter.name;
-      var subDept = e.parameter.subDept;
-      result = startSession(nik, name, subDept);
+      result = startSession(e.parameter.nik, e.parameter.name, e.parameter.subDept);
     } else if (action === 'getLeaderboard') {
       result = getLeaderboard();
     } else if (action === 'verifyAdmin') {
-      var password = e.parameter.password;
-      result = verifyAdmin(password);
+      result = verifyAdmin(e.parameter.password);
     } else {
       return HtmlService.createHtmlOutput('<h1>LMS QC API is running</h1><p>Action parameter is required.</p>');
     }
@@ -120,7 +141,7 @@ function doPost(e) {
   var result = {};
   try {
     var postData = JSON.parse(e.postData.contents);
-    var action = postData.action;
+    var action   = postData.action;
 
     if (action === 'importQuestions') {
       result = importQuestions(postData.password, postData.data);
@@ -130,7 +151,13 @@ function doPost(e) {
       result = updateConfig(postData.password, postData.config);
     } else {
       // Default: submit assessment
-      result = submitAssessment(postData.nik, postData.name, postData.subDept, postData.answers, postData.timeTaken);
+      result = submitAssessment(
+        postData.nik,
+        postData.name,
+        postData.subDept,
+        postData.answers,
+        postData.timeTaken
+      );
     }
   } catch (err) {
     result = { success: false, message: err.toString() };
@@ -144,31 +171,27 @@ function doPost(e) {
 //  INTERNAL BUSINESS & GRADERS LOGIC
 // ============================================================
 
-/**
- * Check if the assessment is open manually or within scheduled time window.
- */
 function isAssessmentOpen() {
-  var ss = getSpreadsheet();
+  var ss          = getSpreadsheet();
   var configSheet = ss.getSheetByName('Config');
   if (!configSheet) return false;
 
-  var isOpen = false;
-  var autoOpenStr = '';
+  var isOpen       = false;
+  var autoOpenStr  = '';
   var autoCloseStr = '';
 
-  var data = configSheet.getDataRange().getValues();
-  data.forEach(function (row) {
+  configSheet.getDataRange().getValues().forEach(function(row) {
     var key = String(row[0]).trim().toLowerCase();
-    if (key === 'assessment open') isOpen = !!row[1];
-    if (key === 'auto open time') autoOpenStr = String(row[1] || '').trim();
-    if (key === 'auto close time') autoCloseStr = String(row[1] || '').trim();
+    if (key === 'assessment open')  isOpen       = !!row[1];
+    if (key === 'auto open time')   autoOpenStr  = String(row[1] || '').trim();
+    if (key === 'auto close time')  autoCloseStr = String(row[1] || '').trim();
   });
 
   if (isOpen) return true;
 
   if (autoOpenStr && autoCloseStr) {
-    var now = new Date().getTime();
-    var openTime = new Date(autoOpenStr).getTime();
+    var now       = new Date().getTime();
+    var openTime  = new Date(autoOpenStr).getTime();
     var closeTime = new Date(autoCloseStr).getTime();
     if (!isNaN(openTime) && !isNaN(closeTime) && now >= openTime && now <= closeTime) {
       return true;
@@ -179,49 +202,46 @@ function isAssessmentOpen() {
 }
 
 /**
- * Returns assessment config metadata, including sub-departments.
- * CACHED: Results cached for CACHE_TTL seconds to reduce Sheet reads.
+ * Returns assessment config metadata.
+ * CACHED for CACHE_TTL seconds.
  */
 function getConfig() {
   var cacheKey = 'config_main';
-  var cached = getCached(cacheKey);
+  var cached   = getCached(cacheKey);
   if (cached) return cached;
 
-  var ss = getSpreadsheet();
+  var ss          = getSpreadsheet();
   var configSheet = ss.getSheetByName('Config');
 
-  var isOpen = false;
-  var title = 'QC Sub-Dept Assessment';
+  var isOpen           = false;
+  var title            = 'QC Sub-Dept Assessment';
   var enforceWhitelist = false;
-  var autoOpenStr = '';
-  var autoCloseStr = '';
+  var autoOpenStr      = '';
+  var autoCloseStr     = '';
   var timeLimitMinutes = DEFAULT_TIME_LIMIT_MINUTES;
   var scorePerQuestion = DEFAULT_SCORE_PER_QUESTION;
-  var maxSpeedBonus = DEFAULT_MAX_SPEED_BONUS;
+  var maxSpeedBonus    = DEFAULT_MAX_SPEED_BONUS;
 
   if (configSheet) {
-    var data = configSheet.getDataRange().getValues();
-    data.forEach(function (row) {
+    configSheet.getDataRange().getValues().forEach(function(row) {
       var key = String(row[0]).trim().toLowerCase();
-      if (key === 'assessment open') isOpen = !!row[1];
-      if (key === 'assessment title') title = String(row[1]).trim() || title;
-      if (key === 'enforce whitelist') enforceWhitelist = !!row[1];
-      if (key === 'auto open time') autoOpenStr = String(row[1] || '').trim();
-      if (key === 'auto close time') autoCloseStr = String(row[1] || '').trim();
-      if (key === 'time limit minutes') timeLimitMinutes = Number(row[1]) || timeLimitMinutes;
-      if (key === 'score per question') scorePerQuestion = Number(row[1]) || scorePerQuestion;
-      if (key === 'max speed bonus') maxSpeedBonus = Number(row[1]) || maxSpeedBonus;
+      if (key === 'assessment open')     isOpen           = !!row[1];
+      if (key === 'assessment title')    title            = String(row[1]).trim() || title;
+      if (key === 'enforce whitelist')   enforceWhitelist = !!row[1];
+      if (key === 'auto open time')      autoOpenStr      = String(row[1] || '').trim();
+      if (key === 'auto close time')     autoCloseStr     = String(row[1] || '').trim();
+      if (key === 'time limit minutes')  timeLimitMinutes = Number(row[1]) || timeLimitMinutes;
+      if (key === 'score per question')  scorePerQuestion = Number(row[1]) || scorePerQuestion;
+      if (key === 'max speed bonus')     maxSpeedBonus    = Number(row[1]) || maxSpeedBonus;
     });
   }
 
-  var activeOpen = isAssessmentOpen();
-
-  // Get dynamic sub-departments based on all sheets, excluding system sheets
-  var sheets = ss.getSheets();
-  var subDepts = [];
+  var activeOpen  = isAssessmentOpen();
+  var sheets      = ss.getSheets();
+  var subDepts    = [];
   var subDeptMeta = {};
 
-  sheets.forEach(function (sheet) {
+  sheets.forEach(function(sheet) {
     var name = sheet.getName();
     if (
       name !== 'Config' &&
@@ -231,58 +251,39 @@ function getConfig() {
       name.indexOf('Responses') !== 0
     ) {
       subDepts.push(name);
-
-      var qCount = 0;
+      var qCount      = 0;
       var scoringCount = 0;
       try {
-        var questionsList = getQuestionsFromSheet(name); // uses cache internally
+        var questionsList = getQuestionsFromSheet(name);
         qCount = questionsList.length;
-        questionsList.forEach(function (q) {
+        questionsList.forEach(function(q) {
           if (q.scoring !== false) scoringCount++;
         });
       } catch (e) {}
-
       subDeptMeta[name] = {
-        totalQuestions: qCount,
+        totalQuestions:   qCount,
         scoringQuestions: scoringCount,
-        timeLimit: timeLimitMinutes * 60,
-        maxScore: scoringCount * scorePerQuestion + maxSpeedBonus
+        timeLimit:        timeLimitMinutes * 60,
+        maxScore:         scoringCount * scorePerQuestion + maxSpeedBonus
       };
     }
   });
 
   var result = {
-    isOpen: activeOpen,
-    title: title,
+    isOpen:           activeOpen,
+    title:            title,
     enforceWhitelist: enforceWhitelist,
-    autoOpenTime: autoOpenStr,
-    autoCloseTime: autoCloseStr,
+    autoOpenTime:     autoOpenStr,
+    autoCloseTime:    autoCloseStr,
     timeLimitMinutes: timeLimitMinutes,
     scorePerQuestion: scorePerQuestion,
-    maxSpeedBonus: maxSpeedBonus,
-    subDepts: subDepts,
-    subDeptMeta: subDeptMeta
+    maxSpeedBonus:    maxSpeedBonus,
+    subDepts:         subDepts,
+    subDeptMeta:      subDeptMeta
   };
 
   setCached(cacheKey, result);
   return result;
-}
-
-/**
- * Check if a NIK has already submitted responses.
- * NOTE: Not cached intentionally — must always be real-time to prevent double submit.
- */
-function checkAlreadySubmitted(nik) {
-  var ss = getSpreadsheet();
-  var sheet = ss.getSheetByName('Responses');
-  var data = sheet.getDataRange().getValues();
-
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][1]).toLowerCase().trim() === String(nik).toLowerCase().trim()) {
-      return true;
-    }
-  }
-  return false;
 }
 
 /**
@@ -291,30 +292,22 @@ function checkAlreadySubmitted(nik) {
  */
 function isParticipantAllowed(nik) {
   var whitelistMap = _getWhitelistMap();
-  if (whitelistMap === null) return true; // bypass if Participants sheet doesn't exist
+  if (whitelistMap === null) return true;
   return !!whitelistMap[String(nik).toLowerCase().trim()];
 }
 
-/**
- * Get registered participant name by NIK.
- * CACHED: Uses the same whitelist map cache.
- */
 function getParticipantName(nik) {
   var whitelistMap = _getWhitelistMap();
   if (!whitelistMap) return '';
   return whitelistMap[String(nik).toLowerCase().trim()] || '';
 }
 
-/**
- * Internal helper: load and cache the full whitelist as { nik: name } map.
- * Returns null if the Participants sheet doesn't exist (whitelist disabled).
- */
 function _getWhitelistMap() {
   var cacheKey = 'whitelist_map';
-  var cached = getCached(cacheKey);
+  var cached   = getCached(cacheKey);
   if (cached) return cached;
 
-  var ss = getSpreadsheet();
+  var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName('Participants');
   if (!sheet) return null;
 
@@ -323,11 +316,9 @@ function _getWhitelistMap() {
 
   var map = {};
   for (var i = 1; i < data.length; i++) {
-    var nikRow = String(data[i][0]).toLowerCase().trim();
+    var nikRow  = String(data[i][0]).toLowerCase().trim();
     var nameRow = String(data[i][1]).trim();
-    if (nikRow) {
-      map[nikRow] = nameRow;
-    }
+    if (nikRow) map[nikRow] = nameRow;
   }
 
   setCached(cacheKey, map);
@@ -336,81 +327,61 @@ function _getWhitelistMap() {
 
 /**
  * Dynamically parse questions from a sheet name.
- * CACHED: Questions per sub-dept cached for CACHE_TTL seconds.
+ * CACHED per sub-dept.
  */
 function getQuestionsFromSheet(subDept) {
   var cacheKey = 'questions_' + subDept;
-  var cached = getCached(cacheKey);
+  var cached   = getCached(cacheKey);
   if (cached) return cached;
 
-  var ss = getSpreadsheet();
+  var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName(subDept);
-  if (!sheet) {
-    throw new Error('Sheet ' + subDept + ' tidak ditemukan.');
-  }
+  if (!sheet) throw new Error('Sheet ' + subDept + ' tidak ditemukan.');
 
   var data = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
 
-  var headers = data[0].map(function (h) { return String(h).trim(); });
-
+  var headers    = data[0].map(function(h) { return String(h).trim(); });
   var colIndices = {};
-  headers.forEach(function (h, idx) {
-    colIndices[h] = idx;
-  });
+  headers.forEach(function(h, idx) { colIndices[h] = idx; });
 
   var choiceLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
-  var questions = [];
+  var questions     = [];
 
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
 
-    var titleIdx = colIndices['Title'] !== undefined ? colIndices['Title'] : 0;
-    var diffIdx = colIndices['Difficulty Level'];
-    var typeIdx =
-      colIndices['Type Questions (Multiple Choice, Essay, Binary)'] !== undefined
-        ? colIndices['Type Questions (Multiple Choice, Essay, Binary)']
-        : colIndices['Type'];
-    var ansIdx = colIndices['Answer'];
-    var kwIdx = colIndices['Keywords'];
-    var imgIdx = colIndices['Image URL'] !== undefined ? colIndices['Image URL'] : colIndices['Image'];
+    var titleIdx   = colIndices['Title']    !== undefined ? colIndices['Title']    : 0;
+    var diffIdx    = colIndices['Difficulty Level'];
+    var typeIdx    = colIndices['Type Questions (Multiple Choice, Essay, Binary)'] !== undefined
+                       ? colIndices['Type Questions (Multiple Choice, Essay, Binary)']
+                       : colIndices['Type'];
+    var ansIdx     = colIndices['Answer'];
+    var kwIdx      = colIndices['Keywords'];
+    var imgIdx     = colIndices['Image URL'] !== undefined ? colIndices['Image URL'] : colIndices['Image'];
     var scoringIdx = colIndices['Scoring'];
 
     var title = String(row[titleIdx]).trim();
-    if (!title) continue; // skip blank rows
+    if (!title) continue;
 
     var difficulty = diffIdx !== undefined ? Number(row[diffIdx]) : 1;
-    var imageUrl = imgIdx !== undefined ? String(row[imgIdx]).trim() : '';
+    var imageUrl   = imgIdx  !== undefined ? String(row[imgIdx]).trim() : '';
 
-    // Normalize Type
     var rawType = typeIdx !== undefined ? String(row[typeIdx]).toLowerCase().trim() : '';
-    var type = 'mc';
+    var type    = 'mc';
     if (rawType.indexOf('essay') !== -1) {
       type = 'essay';
     } else if (rawType.indexOf('binary') !== -1 || rawType.indexOf('bin') !== -1 || rawType === 'binary') {
       type = 'binary';
-    } else {
-      type = 'mc';
     }
 
-    // Normalize Answer
     var rawAns = ansIdx !== undefined ? String(row[ansIdx]).trim() : '';
     var answer = 0;
 
     if (type === 'binary') {
       var lowerAns = rawAns.toLowerCase();
-      if (
-        lowerAns === 'ya' ||
-        lowerAns === 'benar' ||
-        lowerAns === 'a' ||
-        lowerAns === '0' ||
-        lowerAns === 'true' ||
-        lowerAns === 'yes'
-      ) {
-        answer = 0;
-      } else {
-        answer = 1;
-      }
+      answer = (lowerAns === 'ya' || lowerAns === 'benar' || lowerAns === 'a' ||
+                lowerAns === '0' || lowerAns === 'true'   || lowerAns === 'yes') ? 0 : 1;
     } else if (type === 'mc') {
       var letterIdx = choiceLetters.indexOf(rawAns.toUpperCase());
       if (letterIdx !== -1) {
@@ -420,31 +391,26 @@ function getQuestionsFromSheet(subDept) {
         answer = isNaN(numAns) ? 0 : numAns;
       }
     } else {
-      answer = rawAns; // Essay
+      answer = rawAns;
     }
 
-    // Options
     var options = [];
-    choiceLetters.forEach(function (letter) {
+    choiceLetters.forEach(function(letter) {
       var colIdx = colIndices[letter];
       if (colIdx !== undefined && row[colIdx] !== undefined) {
         var optVal = String(row[colIdx]).trim();
-        if (optVal) {
-          options.push(optVal);
-        }
+        if (optVal) options.push(optVal);
       }
     });
 
-    // Keywords (for essay)
     var keywords = [];
     if (kwIdx !== undefined && row[kwIdx]) {
       keywords = String(row[kwIdx])
         .split(',')
-        .map(function (k) { return k.trim().toLowerCase(); })
+        .map(function(k) { return k.trim().toLowerCase(); })
         .filter(Boolean);
     }
 
-    // Parse Scoring column — default to true if column missing or value is empty/yes
     var scoring = true;
     if (scoringIdx !== undefined) {
       var rawScoring = String(row[scoringIdx]).trim().toLowerCase();
@@ -454,15 +420,15 @@ function getQuestionsFromSheet(subDept) {
     }
 
     questions.push({
-      id: i,
-      type: type,
-      question: title,
-      options: options,
-      answer: answer,
+      id:         i,
+      type:       type,
+      question:   title,
+      options:    options,
+      answer:     answer,
       difficulty: difficulty,
-      keywords: keywords.length > 0 ? keywords : null,
-      imageUrl: imageUrl || null,
-      scoring: scoring
+      keywords:   keywords.length > 0 ? keywords : null,
+      imageUrl:   imageUrl || null,
+      scoring:    scoring
     });
   }
 
@@ -474,21 +440,20 @@ function getQuestionsFromSheet(subDept) {
  * Starts assessment session and returns questions without answers.
  */
 function startSession(nik, name, subDept) {
-  var ss = getSpreadsheet();
-  var configSheet = ss.getSheetByName('Config');
+  var ss               = getSpreadsheet();
+  var configSheet      = ss.getSheetByName('Config');
   var enforceWhitelist = false;
   var timeLimitMinutes = DEFAULT_TIME_LIMIT_MINUTES;
   var scorePerQuestion = DEFAULT_SCORE_PER_QUESTION;
-  var maxSpeedBonus = DEFAULT_MAX_SPEED_BONUS;
+  var maxSpeedBonus    = DEFAULT_MAX_SPEED_BONUS;
 
   if (configSheet) {
-    var configData = configSheet.getDataRange().getValues();
-    configData.forEach(function (row) {
+    configSheet.getDataRange().getValues().forEach(function(row) {
       var key = String(row[0]).trim().toLowerCase();
-      if (key === 'enforce whitelist') enforceWhitelist = !!row[1];
-      if (key === 'time limit minutes') timeLimitMinutes = Number(row[1]) || timeLimitMinutes;
-      if (key === 'score per question') scorePerQuestion = Number(row[1]) || scorePerQuestion;
-      if (key === 'max speed bonus') maxSpeedBonus = Number(row[1]) || maxSpeedBonus;
+      if (key === 'enforce whitelist')   enforceWhitelist = !!row[1];
+      if (key === 'time limit minutes')  timeLimitMinutes = Number(row[1]) || timeLimitMinutes;
+      if (key === 'score per question')  scorePerQuestion = Number(row[1]) || scorePerQuestion;
+      if (key === 'max speed bonus')     maxSpeedBonus    = Number(row[1]) || maxSpeedBonus;
     });
   }
 
@@ -502,12 +467,8 @@ function startSession(nik, name, subDept) {
 
   if (enforceWhitelist) {
     if (!isParticipantAllowed(nik)) {
-      return {
-        success: false,
-        message: 'NIK Anda tidak terdaftar sebagai peserta kuis. Hubungi administrator.'
-      };
+      return { success: false, message: 'NIK Anda tidak terdaftar sebagai peserta kuis. Hubungi administrator.' };
     }
-
     var registeredName = getParticipantName(nik);
     if (name && registeredName && registeredName.toLowerCase().trim() !== name.toLowerCase().trim()) {
       return { success: false, message: 'Nama yang dimasukkan tidak sesuai dengan NIK terdaftar.' };
@@ -520,7 +481,7 @@ function startSession(nik, name, subDept) {
 
   var questionsRaw = [];
   try {
-    questionsRaw = getQuestionsFromSheet(subDept); // uses cache
+    questionsRaw = getQuestionsFromSheet(subDept);
   } catch (e) {
     return { success: false, message: 'Gagal memuat soal: ' + e.toString() };
   }
@@ -529,305 +490,221 @@ function startSession(nik, name, subDept) {
     return { success: false, message: 'Belum ada soal untuk sub-department ' + subDept };
   }
 
-  // Strip answers before sending to client, include scoring flag
-  var scoringCount = 0;
-  var questionsClient = questionsRaw.map(function (q) {
-    var item = { id: q.id, type: q.type, question: q.question, imageUrl: q.imageUrl, scoring: q.scoring !== false };
-    if (q.type === 'mc' || q.type === 'binary') {
-      item.options = q.options;
-    }
+  var scoringCount   = 0;
+  var questionsClient = questionsRaw.map(function(q) {
+    var item = {
+      id:       q.id,
+      type:     q.type,
+      question: q.question,
+      imageUrl: q.imageUrl,
+      scoring:  q.scoring !== false
+    };
+    if (q.type === 'mc' || q.type === 'binary') item.options = q.options;
     if (item.scoring) scoringCount++;
     return item;
   });
 
   return {
-    success: true,
-    timeLimit: timeLimitMinutes * 60,
-    totalQuestions: questionsClient.length,
+    success:          true,
+    timeLimit:        timeLimitMinutes * 60,
+    totalQuestions:   questionsClient.length,
     scoringQuestions: scoringCount,
-    maxScore: scoringCount * scorePerQuestion + maxSpeedBonus,
-    questions: questionsClient
+    maxScore:         scoringCount * scorePerQuestion + maxSpeedBonus,
+    questions:        questionsClient
   };
 }
 
-
 /**
- * Score and save a participant's submission.
- *
- * OPTIMIZATION: LockService sekarang hanya melindungi bagian WRITE saja.
- * Semua read (config, validasi, kalkulasi skor) dilakukan SEBELUM lock diambil.
- *
- * Dampak: lock hold time turun dari ~2-3 detik → ~200-300ms per submission.
- * Estimasi kapasitas naik dari ~93/300 → ~200-250/300 concurrent submissions.
+ * Grades submitted answers, saves to Sheets + Supabase, and returns result.
+ * Called from doPost when no explicit action is set.
  */
 function submitAssessment(nik, name, subDept, answers, timeTaken) {
-
-  // ═══════════════════════════════════════════════════════════
-  //  FASE 1 — PRE-PROCESSING (di luar lock)
-  //  Semua operasi READ dan kalkulasi dilakukan di sini.
-  //  Tidak ada write ke sheet, jadi tidak perlu lock.
-  // ═══════════════════════════════════════════════════════════
-
-  // 1a. Baca config (pakai cache — sangat cepat)
-  var ss = getSpreadsheet();
-  var configSheet = ss.getSheetByName('Config');
-  var enforceWhitelist = false;
-  var timeLimitMinutes = DEFAULT_TIME_LIMIT_MINUTES;
-  var scorePerQuestion = DEFAULT_SCORE_PER_QUESTION;
-  var maxSpeedBonus = DEFAULT_MAX_SPEED_BONUS;
-
-  if (configSheet) {
-    var configData = configSheet.getDataRange().getValues();
-    configData.forEach(function (row) {
-      var key = String(row[0]).trim().toLowerCase();
-      if (key === 'enforce whitelist') enforceWhitelist = !!row[1];
-      if (key === 'time limit minutes') timeLimitMinutes = Number(row[1]) || timeLimitMinutes;
-      if (key === 'score per question') scorePerQuestion = Number(row[1]) || scorePerQuestion;
-      if (key === 'max speed bonus') maxSpeedBonus = Number(row[1]) || maxSpeedBonus;
-    });
+  if (!nik || !name || !subDept) {
+    return { success: false, message: 'Data tidak lengkap.' };
   }
 
-  // 1b. Validasi dasar (tidak butuh sheet)
   if (!isAssessmentOpen()) {
     return { success: false, message: 'Assessment is currently closed.' };
   }
 
-  if (!nik || !String(nik).trim()) {
-    return { success: false, message: 'NIK wajib diisi.' };
+  if (checkAlreadySubmitted(nik)) {
+    return { success: false, message: 'NIK ini sudah mengirimkan jawaban.' };
   }
 
-  // 1c. Validasi whitelist (pakai cache — sangat cepat)
-  if (enforceWhitelist && !isParticipantAllowed(nik)) {
-    return { success: false, message: 'NIK Anda tidak terdaftar sebagai peserta kuis.' };
-  }
-
-  // 1d. Load soal (pakai cache — sangat cepat setelah request pertama)
-  var questionsList = [];
-  try {
-    questionsList = getQuestionsFromSheet(subDept);
-  } catch (e) {
-    return { success: false, message: 'Gagal mengambil kunci jawaban: ' + e.toString() };
-  }
-
-  // 1e. Hitung skor (pure computation — tidak butuh sheet sama sekali)
-  var correctCount = 0;
-  var baseScore = 0;
-  var mcCorrect = 0;
-  var binaryCorrect = 0;
-  var essayCorrect = 0;
-  var scoringQuestionCount = 0;
-
-  questionsList.forEach(function (q, i) {
-    if (q.scoring === false) return;
-
-    scoringQuestionCount++;
-    var qScore = 0;
-    var isCorrect = false;
-
-    if (q.type === 'essay') {
-      var ansText = String(answers[i] || '').toLowerCase().trim();
-      var matchCount = 0;
-      if (q.keywords) {
-        q.keywords.forEach(function (kw) {
-          if (ansText.indexOf(kw.toLowerCase()) !== -1) matchCount++;
-        });
-        if (matchCount >= 2) {
-          qScore = scorePerQuestion;
-          isCorrect = true;
-        } else if (matchCount === 1) {
-          qScore = scorePerQuestion / 2;
-        }
-      } else {
-        if (ansText.length > 10) {
-          qScore = scorePerQuestion;
-          isCorrect = true;
-        }
-      }
-      essayCorrect += qScore;
-      baseScore += qScore;
-      if (isCorrect) correctCount++;
-      else if (qScore > 0) correctCount += 0.5;
-
-    } else if (q.type === 'binary') {
-      if (Number(answers[i]) === q.answer) {
-        qScore = scorePerQuestion;
-        binaryCorrect += qScore;
-        baseScore += qScore;
-        correctCount++;
-      }
-    } else {
-      // mc
-      if (Number(answers[i]) === q.answer) {
-        qScore = scorePerQuestion;
-        mcCorrect += qScore;
-        baseScore += qScore;
-        correctCount++;
-      }
-    }
-  });
-
-  var timeLimitSeconds = timeLimitMinutes * 60;
-  var timeRemaining = Math.max(0, timeLimitSeconds - timeTaken);
-  var speedBonus = Math.floor((timeRemaining / timeLimitSeconds) * maxSpeedBonus);
-  var totalScore = baseScore + speedBonus;
-  var scoringTotal = scoringQuestionCount > 0 ? scoringQuestionCount : questionsList.length;
-  var accuracy = Math.round((correctCount / scoringTotal) * 100);
-
-  var finalName = name.trim();
-  if (enforceWhitelist) {
-    var whitelistedName = getParticipantName(nik);
-    if (whitelistedName) finalName = whitelistedName;
-  }
-
-  // Siapkan row data sebelum masuk lock (kurangi waktu di dalam lock)
-  var responseRow = [
-    new Date(),
-    nik.trim(),
-    finalName,
-    subDept,
-    correctCount,
-    questionsList.length,
-    accuracy,
-    baseScore,
-    speedBonus,
-    totalScore,
-    timeTaken,
-    JSON.stringify(answers)
-  ];
-
-  // ═══════════════════════════════════════════════════════════
-  //  FASE 2 — CRITICAL SECTION (di dalam lock)
-  //  Hanya double-check duplicate + 2x appendRow.
-  //  Estimasi lock hold time: ~200-300ms (turun dari ~2-3 detik)
-  // ═══════════════════════════════════════════════════════════
-
-  var lock = LockService.getScriptLock();
-  try {
-    lock.waitLock(30000);
-  } catch (e) {
-    return {
-      success: false,
-      message: 'Server sedang sibuk. Gagal mendapatkan giliran menulis data. Silakan coba lagi.'
-    };
-  }
-
-  try {
-    // Double-check di dalam lock untuk cegah race condition double-submit
-    // (dua request cek "belum submit" bersamaan sebelum lock → keduanya lolos)
-    if (checkAlreadySubmitted(nik)) {
-      return { success: false, message: 'Anda sudah mengirimkan jawaban untuk NIK ini.' };
-    }
-
-    // Write 1: Master Responses sheet
-    var responseSheet = ss.getSheetByName('Responses');
-    if (responseSheet) {
-      var firstRow = responseSheet.getRange(1, 1, 1, 12).getValues()[0];
-      if (firstRow[1] !== 'NIK' || firstRow[2] !== 'Name') {
-        responseSheet.getRange(1, 1, 1, 12).setValues([[
-          'Timestamp', 'NIK', 'Name', 'Sub-Department', 'Correct', 'Total Questions',
-          'Accuracy (%)', 'Base Score', 'Speed Bonus', 'Total Score', 'Time Taken (s)', 'Answers Detail'
-        ]]);
-        responseSheet.getRange(1, 1, 1, 12).setFontWeight('bold');
-      }
-      responseSheet.appendRow(responseRow);
-    }
-
-    // Write 2: Detailed sub-department sheet
-    try {
-      var detailedSheet = getOrCreateDetailedResponseSheet(ss, subDept, questionsList);
-      var scoreFraction = totalScore + ' / ' + (questionsList.length * scorePerQuestion + maxSpeedBonus);
-
-      var detailedRow = [
-        new Date(),
-        scoreFraction,
-        finalName,
-        nik.trim(),
-        subDept,
-        timeTaken,
-        mcCorrect,
-        binaryCorrect,
-        essayCorrect,
-        totalScore
-      ];
-
-      var choiceLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
-      questionsList.forEach(function (q, i) {
-        var ansVal = answers[i];
-        if (ansVal === undefined || ansVal === null || ansVal === -1 || ansVal === '') {
-          detailedRow.push('');
-        } else {
-          if (q.type === 'essay') {
-            detailedRow.push(ansVal);
-          } else {
-            var idx = Number(ansVal);
-            var optionText = q.options[idx] || '';
-            if (q.type === 'mc') {
-              var letter = choiceLetters[idx] || '';
-              detailedRow.push(letter ? letter + '. ' + optionText : optionText);
-            } else {
-              detailedRow.push(optionText);
-            }
-          }
-        }
-      });
-
-      detailedSheet.appendRow(detailedRow);
-    } catch (e) {
-      Logger.log('Error writing detailed response sheet: ' + e.message);
-    }
-
-    // Return hasil
-    return {
-      success: true,
-      name: finalName,
-      correctCount: correctCount,
-      totalQuestions: questionsList.length,
-      scoringQuestions: scoringQuestionCount,
-      accuracy: accuracy,
-      baseScore: baseScore,
-      speedBonus: speedBonus,
-      totalScore: totalScore,
-      timeTaken: timeTaken
-    };
-
-  } finally {
-    // Lock SELALU dilepas, bahkan jika ada error
-    lock.releaseLock();
-  }
-}
-
-
-/**
- * Returns top 20 participants sorted by totalScore, then by fastest time.
- */
-function getLeaderboard() {
-  var ss = getSpreadsheet();
-  var sheet = ss.getSheetByName('Responses');
-  var data = sheet.getDataRange().getValues();
-
-  if (data.length <= 1) return [];
-
-  var results = [];
-  for (var i = 1; i < data.length; i++) {
-    results.push({
-      name: data[i][2],
-      subDept: data[i][3],
-      correct: data[i][4],
-      total: data[i][5],
-      accuracy: data[i][6],
-      baseScore: data[i][7],
-      speedBonus: data[i][8],
-      totalScore: data[i][9],
-      timeTaken: data[i][10]
+  // Read config values
+  var ss               = getSpreadsheet();
+  var scorePerQuestion = DEFAULT_SCORE_PER_QUESTION;
+  var maxSpeedBonus    = DEFAULT_MAX_SPEED_BONUS;
+  var timeLimitMinutes = DEFAULT_TIME_LIMIT_MINUTES;
+  var configSheet      = ss.getSheetByName('Config');
+  if (configSheet) {
+    configSheet.getDataRange().getValues().forEach(function(row) {
+      var key = String(row[0]).trim().toLowerCase();
+      if (key === 'time limit minutes')  timeLimitMinutes = Number(row[1]) || timeLimitMinutes;
+      if (key === 'score per question')  scorePerQuestion = Number(row[1]) || scorePerQuestion;
+      if (key === 'max speed bonus')     maxSpeedBonus    = Number(row[1]) || maxSpeedBonus;
     });
   }
 
-  results.sort(function (a, b) {
-    if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
-    return a.timeTaken - b.timeTaken;
+  var questions;
+  try {
+    questions = getQuestionsFromSheet(subDept);
+  } catch (e) {
+    return { success: false, message: 'Gagal memuat soal: ' + e.toString() };
+  }
+  if (!questions || questions.length === 0) {
+    return { success: false, message: 'Tidak ada soal untuk sub-department: ' + subDept };
+  }
+
+  // --- Grading ---
+  var LETTERS               = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+  var correctCount          = 0;
+  var totalScoringQuestions = 0;
+  var mcCorrect             = 0;
+  var binaryCorrect         = 0;
+  var essayCorrect          = 0;
+  var answersDetail         = {};
+
+  questions.forEach(function(q, idx) {
+    var userAnswer = answers ? answers[idx] : undefined;
+    var isScoring  = (q.scoring !== false);
+    if (isScoring) totalScoringQuestions++;
+
+    var isCorrect = false;
+
+    if (q.type === 'essay') {
+      var essayAns = String(userAnswer || '').toLowerCase().trim();
+      if (q.keywords && q.keywords.length > 0) {
+        var hits = q.keywords.filter(function(kw) {
+          return essayAns.indexOf(kw.toLowerCase()) !== -1;
+        }).length;
+        isCorrect = hits >= Math.ceil(q.keywords.length / 2);
+      }
+      if (isScoring && isCorrect) essayCorrect++;
+      answersDetail['Q' + q.id] = String(userAnswer || '') +
+        (isScoring ? (' (' + (isCorrect ? '✓' : '✗') + ')') : ' [NS]');
+
+    } else {
+      var userNum = parseInt(userAnswer, 10);
+      isCorrect   = (!isNaN(userNum) && userNum === q.answer);
+      var letter  = (userNum >= 0 && userNum < LETTERS.length) ? LETTERS[userNum] : String(userAnswer);
+      var correct = (q.answer >= 0 && q.answer < LETTERS.length) ? LETTERS[q.answer] : String(q.answer);
+      if (isScoring) {
+        if (q.type === 'mc')     { if (isCorrect) mcCorrect++;     }
+        if (q.type === 'binary') { if (isCorrect) binaryCorrect++; }
+      }
+      answersDetail['Q' + q.id] = letter +
+        (isScoring ? (' (' + (isCorrect ? '✓' : '✗ ' + correct) + ')') : ' [NS]');
+    }
+
+    if (isScoring && isCorrect) correctCount++;
   });
 
-  return results.slice(0, 20);
+  // --- Score calculation ---
+  var accuracy   = totalScoringQuestions > 0
+    ? Math.round((correctCount / totalScoringQuestions) * 100) : 0;
+  var baseScore  = correctCount * scorePerQuestion;
+  var timeLimitS = timeLimitMinutes * 60;
+  var speedBonus = 0;
+  if (maxSpeedBonus > 0 && timeTaken < timeLimitS) {
+    speedBonus = Math.round((1 - timeTaken / timeLimitS) * maxSpeedBonus);
+  }
+  var totalScore  = baseScore + speedBonus;
+  var mcScore     = mcCorrect     * scorePerQuestion;
+  var binaryScore = binaryCorrect * scorePerQuestion;
+  var essayScore  = essayCorrect  * scorePerQuestion;
+  var timestamp   = new Date();
+
+  // --- Write to Sheets (backup) ---
+  try {
+    var resSheet = ss.getSheetByName('Responses');
+    if (resSheet) {
+      resSheet.appendRow([
+        timestamp, nik, name, subDept,
+        correctCount, totalScoringQuestions, accuracy,
+        baseScore, speedBonus, totalScore, timeTaken,
+        JSON.stringify(answersDetail)
+      ]);
+    }
+  } catch (e) {
+    Logger.log('Sheet write error: ' + e.toString());
+  }
+
+  // --- Write to Supabase (primary store) ---
+  try {
+    var sbRes = insertToSupabase({
+      submitted_at:    timestamp.toISOString(),
+      nik:             String(nik).trim(),
+      name:            String(name).trim(),
+      sub_department:  subDept,
+      correct_count:   correctCount,
+      total_questions: totalScoringQuestions,
+      accuracy_pct:    accuracy,
+      base_score:      baseScore,
+      speed_bonus:     speedBonus,
+      total_score:     totalScore,
+      time_taken_s:    timeTaken,
+      mc_score:        mcScore,
+      binary_score:    binaryScore,
+      essay_score:     essayScore,
+      answers_detail:  answersDetail
+    });
+    var code = sbRes.getResponseCode();
+    if (code < 200 || code >= 300) {
+      Logger.log('Supabase insert HTTP ' + code + ': ' + sbRes.getContentText());
+    }
+  } catch (e) {
+    Logger.log('Supabase insert error: ' + e.toString());
+    // Data sudah aman di Sheets — tidak gagalkan seluruh submission
+  }
+
+  return {
+    success:        true,
+    name:           name,
+    correctCount:   correctCount,
+    totalQuestions: totalScoringQuestions,
+    accuracy:       accuracy,
+    baseScore:      baseScore,
+    speedBonus:     speedBonus,
+    totalScore:     totalScore,
+    timeTaken:      timeTaken
+  };
+}
+
+/**
+ * Returns top 20 participants sorted by totalScore, then fastest time.
+ * Reads from Supabase as primary store.
+ */
+function getLeaderboard() {
+  var url = SUPABASE_URL + '/rest/v1/assessment_responses'
+    + '?select=name,sub_department,correct_count,total_questions,accuracy_pct,base_score,speed_bonus,total_score,time_taken_s'
+    + '&order=total_score.desc,time_taken_s.asc'
+    + '&limit=20';
+  var options = {
+    method: 'get',
+    headers: {
+      'apikey': SUPABASE_SERVICE_KEY,
+      'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY
+    },
+    muteHttpExceptions: true
+  };
+  var res  = UrlFetchApp.fetch(url, options);
+  var data = JSON.parse(res.getContentText());
+  if (!Array.isArray(data)) return [];
+
+  return data.map(function(r) {
+    return {
+      name:       r.name,
+      subDept:    r.sub_department,
+      correct:    r.correct_count,
+      total:      r.total_questions,
+      accuracy:   r.accuracy_pct,
+      baseScore:  r.base_score,
+      speedBonus: r.speed_bonus,
+      totalScore: r.total_score,
+      timeTaken:  r.time_taken_s
+    };
+  });
 }
 
 // ============================================================
@@ -836,9 +713,9 @@ function getLeaderboard() {
 
 function getAdminPassword() {
   try {
-    var ss = getSpreadsheet();
+    var ss          = getSpreadsheet();
     var configSheet = ss.getSheetByName('Config');
-    var data = configSheet.getDataRange().getValues();
+    var data        = configSheet.getDataRange().getValues();
     for (var i = 0; i < data.length; i++) {
       if (String(data[i][0]).trim().toLowerCase() === 'admin password') {
         return String(data[i][1]).trim();
@@ -850,9 +727,7 @@ function getAdminPassword() {
 
 function verifyAdmin(password) {
   var actualPassword = getAdminPassword();
-  if (password === actualPassword) {
-    return { success: true };
-  }
+  if (password === actualPassword) return { success: true };
   return { success: false, message: 'Password admin salah.' };
 }
 
@@ -868,8 +743,8 @@ function importQuestions(password, data) {
 
   for (var d = 0; d < data.length; d++) {
     var importData = data[d];
-    var subDept = importData.subDept.trim();
-    var questions = importData.questions;
+    var subDept    = importData.subDept.trim();
+    var questions  = importData.questions;
 
     if (!subDept || !questions || questions.length === 0) continue;
 
@@ -880,21 +755,25 @@ function importQuestions(password, data) {
       sheet = ss.insertSheet(subDept);
     }
 
-    var headers = ['Title', 'Difficulty Level', 'Type', 'Answer', 'Question Knowledge', 'Keywords', 'Image URL', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    var headers = [
+      'Title', 'Difficulty Level', 'Type', 'Answer',
+      'Question Knowledge', 'Keywords', 'Image URL',
+      'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'
+    ];
     sheet.appendRow(headers);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
 
+    var letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
     for (var q = 0; q < questions.length; q++) {
-      var item = questions[q];
-      var row = [];
+      var item   = questions[q];
+      var row    = [];
+      var rawAns = item.answer;
 
       row.push(item.question);
       row.push(item.difficulty || 1);
       row.push(item.type || 'mc');
 
-      var rawAns = item.answer;
       if (item.type === 'mc') {
-        var letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
         if (typeof rawAns === 'number' && rawAns >= 0 && rawAns < letters.length) {
           rawAns = letters[rawAns];
         }
@@ -915,13 +794,10 @@ function importQuestions(password, data) {
       sheet.appendRow(row);
     }
 
-    // Invalidate cache for this sub-dept
     clearCache('questions_' + subDept);
   }
 
-  // Invalidate config cache (qCount per sub-dept may have changed)
   clearCache('config_main');
-
   return { success: true, message: 'Berhasil mengimpor ' + data.length + ' sub-department soal.' };
 }
 
@@ -937,35 +813,33 @@ function importParticipants(password, data) {
     return { success: false, message: 'Data partisipan kosong. Silakan muat ulang halaman Anda.' };
   }
 
-  var ss = getSpreadsheet();
+  var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName('Participants');
-  if (!sheet) {
-    sheet = ss.insertSheet('Participants');
-  }
+  if (!sheet) sheet = ss.insertSheet('Participants');
 
   sheet.clearContents();
   sheet.appendRow(['NIK', 'Name', 'Import Date']);
   sheet.getRange(1, 1, 1, 3).setFontWeight('bold');
 
   var dateStr = new Date();
-  var count = 0;
+  var count   = 0;
 
   for (var i = 0; i < data.length; i++) {
     var item = data[i];
-    var nik = '';
+    var nik  = '';
     var name = '';
 
     if (item && typeof item === 'object') {
-      nik = String(item.nik || '').trim();
+      nik  = String(item.nik  || '').trim();
       name = String(item.name || '').trim();
     } else if (typeof item === 'string') {
       var parts = item.split(',');
       if (parts.length >= 2) {
-        nik = parts[0].trim();
+        nik  = parts[0].trim();
         name = parts.slice(1).join(',').trim();
       } else {
         name = item.trim();
-        nik = 'TEMP_' + (1000 + i);
+        nik  = 'TEMP_' + (1000 + i);
       }
     }
 
@@ -975,15 +849,13 @@ function importParticipants(password, data) {
     }
   }
 
-  // Invalidate whitelist cache
   clearCache('whitelist_map');
-
   return { success: true, message: 'Berhasil mengimpor ' + count + ' nama partisipan.' };
 }
 
 function setConfigValue(sheet, configMap, key, value) {
   var normalizedKey = key.trim().toLowerCase();
-  var row = configMap[normalizedKey];
+  var row           = configMap[normalizedKey];
   if (row) {
     sheet.getRange(row, 2).setValue(value);
   } else {
@@ -1000,46 +872,26 @@ function updateConfig(password, configUpdates) {
   var verification = verifyAdmin(password);
   if (!verification.success) return verification;
 
-  var ss = getSpreadsheet();
+  var ss    = getSpreadsheet();
   var sheet = ss.getSheetByName('Config');
-  var data = sheet.getDataRange().getValues();
+  var data  = sheet.getDataRange().getValues();
 
   var configMap = {};
   for (var i = 0; i < data.length; i++) {
     configMap[String(data[i][0]).trim().toLowerCase()] = i + 1;
   }
 
-  if (configUpdates.isOpen !== undefined) {
-    setConfigValue(sheet, configMap, 'Assessment Open', configUpdates.isOpen);
-  }
-  if (configUpdates.title !== undefined) {
-    setConfigValue(sheet, configMap, 'Assessment Title', configUpdates.title);
-  }
-  if (configUpdates.adminPassword !== undefined) {
-    setConfigValue(sheet, configMap, 'Admin Password', configUpdates.adminPassword);
-  }
-  if (configUpdates.enforceWhitelist !== undefined) {
-    setConfigValue(sheet, configMap, 'Enforce Whitelist', configUpdates.enforceWhitelist);
-  }
-  if (configUpdates.autoOpenTime !== undefined) {
-    setConfigValue(sheet, configMap, 'Auto Open Time', configUpdates.autoOpenTime);
-  }
-  if (configUpdates.autoCloseTime !== undefined) {
-    setConfigValue(sheet, configMap, 'Auto Close Time', configUpdates.autoCloseTime);
-  }
-  if (configUpdates.timeLimitMinutes !== undefined) {
-    setConfigValue(sheet, configMap, 'Time Limit Minutes', Number(configUpdates.timeLimitMinutes) || 10);
-  }
-  if (configUpdates.scorePerQuestion !== undefined) {
-    setConfigValue(sheet, configMap, 'Score Per Question', Number(configUpdates.scorePerQuestion) || 10);
-  }
-  if (configUpdates.maxSpeedBonus !== undefined) {
-    setConfigValue(sheet, configMap, 'Max Speed Bonus', Number(configUpdates.maxSpeedBonus) || 0);
-  }
+  if (configUpdates.isOpen         !== undefined) setConfigValue(sheet, configMap, 'Assessment Open',     configUpdates.isOpen);
+  if (configUpdates.title           !== undefined) setConfigValue(sheet, configMap, 'Assessment Title',    configUpdates.title);
+  if (configUpdates.adminPassword   !== undefined) setConfigValue(sheet, configMap, 'Admin Password',      configUpdates.adminPassword);
+  if (configUpdates.enforceWhitelist!== undefined) setConfigValue(sheet, configMap, 'Enforce Whitelist',   configUpdates.enforceWhitelist);
+  if (configUpdates.autoOpenTime    !== undefined) setConfigValue(sheet, configMap, 'Auto Open Time',      configUpdates.autoOpenTime);
+  if (configUpdates.autoCloseTime   !== undefined) setConfigValue(sheet, configMap, 'Auto Close Time',     configUpdates.autoCloseTime);
+  if (configUpdates.timeLimitMinutes!== undefined) setConfigValue(sheet, configMap, 'Time Limit Minutes',  Number(configUpdates.timeLimitMinutes) || 10);
+  if (configUpdates.scorePerQuestion!== undefined) setConfigValue(sheet, configMap, 'Score Per Question',  Number(configUpdates.scorePerQuestion) || 10);
+  if (configUpdates.maxSpeedBonus   !== undefined) setConfigValue(sheet, configMap, 'Max Speed Bonus',     Number(configUpdates.maxSpeedBonus) || 0);
 
-  // Invalidate config cache
   clearCache('config_main');
-
   return { success: true, message: 'Konfigurasi berhasil disimpan.' };
 }
 
@@ -1065,7 +917,7 @@ function setAssessmentTitle(title) {
 }
 
 /**
- * Run this ONCE to initialize the spreadsheet structure.
+ * Run ONCE to initialize the spreadsheet structure.
  */
 function setupSheets() {
   var ss = getSpreadsheet();
@@ -1074,15 +926,15 @@ function setupSheets() {
   if (!configSheet) configSheet = ss.insertSheet('Config');
   configSheet.clearContents();
   configSheet.getRange('A1:B9').setValues([
-    ['Assessment Open', false],
-    ['Assessment Title', 'QC Sub-Dept Assessment'],
-    ['Admin Password', 'admin123'],
+    ['Assessment Open',   false],
+    ['Assessment Title',  'QC Sub-Dept Assessment'],
+    ['Admin Password',    'admin123'],
     ['Enforce Whitelist', false],
-    ['Auto Open Time', ''],
-    ['Auto Close Time', ''],
+    ['Auto Open Time',    ''],
+    ['Auto Close Time',   ''],
     ['Time Limit Minutes', 10],
     ['Score Per Question', 10],
-    ['Max Speed Bonus', 20]
+    ['Max Speed Bonus',    20]
   ]);
 
   var resSheet = ss.getSheetByName('Responses');
@@ -1119,15 +971,12 @@ function autoCloseAfter(minutes) {
  */
 function getOrCreateDetailedResponseSheet(ss, subDept, questionsList) {
   var sheetName = 'Responses - ' + subDept;
-  var sheet = ss.getSheetByName(sheetName);
-  if (sheet) {
-    return sheet;
-  }
+  var sheet     = ss.getSheetByName(sheetName);
+  if (sheet) return sheet;
 
   sheet = ss.insertSheet(sheetName);
   var numQuestions = questionsList.length;
 
-  // Row 1: Merged headers
   sheet.getRange(1, 1).setValue('Data');
   sheet.getRange(1, 7).setValue('Correct');
   sheet.getRange(1, 11).setValue('Answers Detail');
@@ -1135,30 +984,16 @@ function getOrCreateDetailedResponseSheet(ss, subDept, questionsList) {
   sheet.getRange('A1:F1').merge().setHorizontalAlignment('center').setFontWeight('bold').setBackground('#f3f3f3');
   sheet.getRange('G1:J1').merge().setHorizontalAlignment('center').setFontWeight('bold').setBackground('#d9ead3');
 
-  var lastColIndex = 11 + numQuestions - 1;
-  var colLetterEnd = getColumnLetter(lastColIndex);
-  sheet
-    .getRange('K1:' + colLetterEnd + '1')
-    .merge()
-    .setHorizontalAlignment('center')
-    .setFontWeight('bold')
-    .setBackground('#c9daf8');
+  var lastColIndex  = 11 + numQuestions - 1;
+  var colLetterEnd  = getColumnLetter(lastColIndex);
+  sheet.getRange('K1:' + colLetterEnd + '1')
+    .merge().setHorizontalAlignment('center').setFontWeight('bold').setBackground('#c9daf8');
 
-  // Row 2: Sub-headers
   var headers = [
-    'Timestamp',
-    'Score',
-    'Nama',
-    'NIK',
-    'Sub-Department',
-    'Time Taken (s)',
-    'Multiple Choice',
-    'Binary',
-    'Essay',
-    'Total Score'
+    'Timestamp', 'Score', 'Nama', 'NIK', 'Sub-Department', 'Time Taken (s)',
+    'Multiple Choice', 'Binary', 'Essay', 'Total Score'
   ];
-
-  questionsList.forEach(function (q, idx) {
+  questionsList.forEach(function(q, idx) {
     headers.push('Q' + (idx + 1) + ': ' + q.question);
   });
 
@@ -1173,12 +1008,11 @@ function getOrCreateDetailedResponseSheet(ss, subDept, questionsList) {
  * Convert column index (1-based) to column letter (A, B, ... Z, AA, AB...).
  */
 function getColumnLetter(col) {
-  var temp,
-    letter = '';
+  var temp, letter = '';
   while (col > 0) {
-    temp = (col - 1) % 26;
+    temp   = (col - 1) % 26;
     letter = String.fromCharCode(65 + temp) + letter;
-    col = (col - temp - 1) / 26;
+    col    = (col - temp - 1) / 26;
   }
   return letter;
 }

@@ -347,19 +347,30 @@
                                     style="margin-top: 0.75rem; background: var(--teal-50); color: var(--teal-800); border-color: var(--teal-100);">
                                     📥 Download Template Excel Soal
                                 </button>
+
+                                <button id="btn-download" onclick="downloadResponses()">⬇ Download Responses</button>
                             </div>
 
                             <hr class="divider" style="margin: 1.5rem 0;" />
 
                             <div class="admin-section">
                                 <h3>💡 Soal Tidak Dinilai (Tes Pendahuluan)</h3>
-                                <div style="background: var(--amber-50); border: 0.5px solid var(--amber-100); border-radius: var(--radius-sm); padding: 12px 14px; font-size: 13px; color: var(--amber-800); line-height: 1.6; margin-bottom: 0.75rem;">
-                                    Untuk menambahkan soal yang <strong>tidak masuk scoring</strong> (contoh: Tes Ishikawa, Tes Buta Warna, survei pendahuluan), isi kolom <code style="background: rgba(0,0,0,0.07); padding: 1px 5px; border-radius: 3px;">Scoring</code> dengan nilai <strong>No</strong> pada file Excel.<br><br>
-                                    ✅ Soal non-scoring akan muncul <strong>di bagian paling awal</strong> quiz dengan label "Tidak Dinilai".<br>
+                                <div
+                                    style="background: var(--amber-50); border: 0.5px solid var(--amber-100); border-radius: var(--radius-sm); padding: 12px 14px; font-size: 13px; color: var(--amber-800); line-height: 1.6; margin-bottom: 0.75rem;">
+                                    Untuk menambahkan soal yang <strong>tidak masuk scoring</strong> (contoh: Tes
+                                    Ishikawa, Tes Buta Warna, survei pendahuluan), isi kolom <code
+                                        style="background: rgba(0,0,0,0.07); padding: 1px 5px; border-radius: 3px;">Scoring</code>
+                                    dengan nilai <strong>No</strong> pada file Excel.<br><br>
+                                    ✅ Soal non-scoring akan muncul <strong>di bagian paling awal</strong> quiz dengan
+                                    label "Tidak Dinilai".<br>
                                     ✅ Jawaban tetap tercatat di spreadsheet untuk keperluan analisis.<br>
-                                    ✅ Soal non-scoring <strong>tidak mempengaruhi skor, akurasi, atau leaderboard</strong>.
+                                    ✅ Soal non-scoring <strong>tidak mempengaruhi skor, akurasi, atau
+                                        leaderboard</strong>.
                                 </div>
-                                <p class="text-muted" style="font-size: 12px;">Kolom Scoring pada Excel: <strong>Yes</strong> = masuk skor (default) &nbsp;|&nbsp; <strong>No</strong> = tidak masuk skor</p>
+                                <p class="text-muted" style="font-size: 12px;">Kolom Scoring pada Excel:
+                                    <strong>Yes</strong> = masuk skor (default) &nbsp;|&nbsp; <strong>No</strong> =
+                                    tidak masuk skor
+                                </p>
                             </div>
                         </div>
 
