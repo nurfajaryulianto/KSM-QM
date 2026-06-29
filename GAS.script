@@ -901,10 +901,99 @@ function importQuestions(password, data) {
     }
 
     clearCache('questions_' + subDept);
+    
+    // Sinkronisasi ke tabel quiz_questions di Supabase
+    insertQuestionsToSupabase(subDept, questions);
   }
 
   clearCache('config_main');
   return { success: true, message: 'Berhasil mengimpor ' + data.length + ' sub-department soal.' };
+}
+
+/**
+ * Menyinkronkan soal dari Google Sheets ke tabel quiz_questions di Supabase.
+ */
+function insertQuestionsToSupabase(subDept, questions) {
+  try {
+    // 1. Hapus pertanyaan lama untuk subDept ini di Supabase
+    var deleteUrl = SUPABASE_URL + '/rest/v1/quiz_questions?sub_department=eq.' + encodeURIComponent(subDept);
+    var deleteOptions = {
+      method: 'delete',
+      headers: {
+        'apikey': SUPABASE_SERVICE_KEY,
+        'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY
+      },
+      muteHttpExceptions: true
+    };
+    var delRes = UrlFetchApp.fetch(deleteUrl, deleteOptions);
+    var delCode = delRes.getResponseCode();
+    if (delCode < 200 || delCode >= 300) {
+      Logger.log('Supabase delete questions HTTP ' + delCode + ': ' + delRes.getContentText());
+    }
+
+    // 2. Siapkan array soal baru untuk bulk insert
+    var payload = [];
+    var letters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    
+    questions.forEach(function(q, index) {
+      var questionNum = index + 1;
+      var correctAnsText = '';
+      
+      if (q.type === 'mc' || q.type === 'binary') {
+        var ansIndex = -1;
+        // Jika jawaban berupa index numerik
+        if (typeof q.answer === 'number') {
+          ansIndex = q.answer;
+        } else {
+          // Jika jawaban berupa huruf A, B, C...
+          ansIndex = letters.indexOf(String(q.answer).toUpperCase());
+        }
+        
+        // Dapatkan teks opsi yang benar
+        if (ansIndex >= 0 && q.options && q.options[ansIndex] !== undefined) {
+          correctAnsText = q.options[ansIndex];
+        } else {
+          correctAnsText = String(q.answer);
+        }
+      } else {
+        correctAnsText = String(q.answer || '');
+      }
+
+      payload.push({
+        sub_department: subDept,
+        question_number: questionNum,
+        question_text: q.question,
+        question_type: q.type,
+        options: q.options || [],
+        correct_answer: correctAnsText,
+        scoring: q.scoring !== false,
+        keywords: q.keywords || []
+      });
+    });
+
+    if (payload.length > 0) {
+      // 3. Lakukan bulk insert ke Supabase
+      var insertUrl = SUPABASE_URL + '/rest/v1/quiz_questions';
+      var insertOptions = {
+        method: 'post',
+        contentType: 'application/json',
+        headers: {
+          'apikey': SUPABASE_SERVICE_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_SERVICE_KEY,
+          'Prefer': 'return=minimal'
+        },
+        payload: JSON.stringify(payload),
+        muteHttpExceptions: true
+      };
+      var insRes = UrlFetchApp.fetch(insertUrl, insertOptions);
+      var insCode = insRes.getResponseCode();
+      if (insCode < 200 || insCode >= 300) {
+        Logger.log('Supabase insert questions HTTP ' + insCode + ': ' + insRes.getContentText());
+      }
+    }
+  } catch (e) {
+    Logger.log('Error syncing questions to Supabase: ' + e.toString());
+  }
 }
 
 /**
