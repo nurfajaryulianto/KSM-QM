@@ -627,7 +627,7 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
       }
 
       var hitCount = 0;
-      var requiredHits = 0;
+      var questionCorrectness = 0.0;
 
       if (evalKeywords.length > 0) {
         hitCount = evalKeywords.filter(function(kw) {
@@ -637,31 +637,43 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
         if (usingFallback) {
           // Fallback mode: lebih longgar — hanya perlu 1 kata kunci ditemukan
           // karena keyword ini otomatis, bukan kurasi manual
-          requiredHits = 1;
+          questionCorrectness = (hitCount >= 1) ? 1.0 : 0.0;
         } else {
-          // Keyword mode: cukup 1 kata kunci saja yang cocok (OR/alternative logic)
-          requiredHits = 1;
+          // Keyword mode:
+          // 2 atau lebih keyword yang hit dianggap bernilai 1.0
+          // 1 keyword yang hit dianggap bernilai 0.5
+          // jika total keyword hanya 1, maka hit 1 dianggap bernilai 1.0
+          if (hitCount >= 2) {
+            questionCorrectness = 1.0;
+          } else if (hitCount === 1) {
+            questionCorrectness = (evalKeywords.length === 1) ? 1.0 : 0.5;
+          } else {
+            questionCorrectness = 0.0;
+          }
         }
-
-        isCorrect = (essayAns.length > 0) && (hitCount >= requiredHits);
       } else {
         // Tidak ada keyword sama sekali dan answer kosong:
         // Berikan nilai jika user mengisi jawaban (minimal 10 karakter)
-        isCorrect = essayAns.length >= 10;
+        questionCorrectness = (essayAns.length >= 10) ? 1.0 : 0.0;
       }
 
-      if (isScoring && isCorrect) essayCorrect++;
+      isCorrect = (questionCorrectness === 1.0);
+      var isPartiallyCorrect = (questionCorrectness === 0.5);
+
+      if (isScoring) essayCorrect += questionCorrectness;
 
       // Detail: tampilkan hit count di answersDetail untuk review admin
+      var statusSymbol = isCorrect ? '✓' : (isPartiallyCorrect ? '½' : '✗');
       var kwInfo = evalKeywords.length > 0
-        ? ' (' + hitCount + '/' + evalKeywords.length + ' kw' + (isCorrect ? ' ✓' : ' ✗') + ')'
-        : (isCorrect ? ' (✓)' : ' (✗)');
+        ? ' (' + hitCount + '/' + evalKeywords.length + ' kw ' + statusSymbol + ')'
+        : ' (' + statusSymbol + ')';
       answersDetail['Q' + q.id] = String(userAnswer || '') +
         (isScoring ? kwInfo : ' [NS]');
 
     } else {
       var userNum    = parseInt(userAnswer, 10);
       isCorrect      = (!isNaN(userNum) && userNum === q.answer);
+      var questionCorrectness = isCorrect ? 1.0 : 0.0;
 
       // Tampilkan teks opsi yang dipilih user (bukan huruf/indeks)
       var options    = q.options || [];
@@ -684,7 +696,7 @@ function submitAssessment(nik, name, subDept, answers, timeTaken) {
           : ' [NS]');
     }
 
-    if (isScoring && isCorrect) correctCount++;
+    if (isScoring) correctCount += questionCorrectness;
   });
 
   // --- Score calculation ---
